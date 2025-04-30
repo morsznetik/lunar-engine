@@ -1,0 +1,23 @@
+[project]
+name = "lunar-engine"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = []
+
+[project.optional-dependencies]
+dev = [
+    "pre-commit",
+    "ruff",
+    "basedpyright",
+]
+
+[project.scripts]
+pyplayer = "src:main"
+
+[tool.setuptools]
+packages = ["src"]
+
+[tool.basedpyright]
+typeCheckingMode = "recommended"
