@@ -20,4 +20,4 @@ pyplayer = "src:main"
 packages = ["src"]
 
 [tool.basedpyright]
-typeCheckingMode = "recommended"
+typeCheckingMode = "strict"
