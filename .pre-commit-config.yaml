@@ -1,21 +1,41 @@
+default_install_hook_types: ["pre-commit", "commit-msg"]
+
 repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v5.0.0
     hooks:
-      - id: trailing-whitespace
+      - id: check-case-conflict
+      - id: check-executables-have-shebangs
+      - id: check-illegal-windows-names
+      - id: check-merge-conflict
+      - id: check-shebang-scripts-are-executable
+      - id: check-symlinks
+      - id: check-vcs-permalinks
+      - id: destroyed-symlinks
+      - id: double-quote-string-fixer
       - id: end-of-file-fixer
-      - id: check-yaml
-      - id: check-added-large-files
-      - id: check-toml
+      - id: fix-byte-order-marker
+      - id: mixed-line-ending
+        args: [--fix=lf]
+      - id: trailing-whitespace
+        args: [--markdown-linebreak-ext=md]
 
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.9.10
+    rev: v0.12.4
     hooks:
-      - id: ruff
-        args: [--fix]
       - id: ruff-format
 
+  - repo: https://github.com/DetachHead/basedpyright-pre-commit-mirror
+    rev: v1.13.0
+    hooks:
+      - id: basedpyright
+
   - repo: https://github.com/crate-ci/typos
-    rev: v1.30.2
+    rev: v1.34.0
     hooks:
       - id: typos
+
+  - repo: https://github.com/crate-ci/committed
+    rev: v1.1.7
+    hooks:
+    - id: committed
