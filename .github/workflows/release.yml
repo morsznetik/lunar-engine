@@ -17,7 +17,7 @@ jobs:
       - name: Install Python 3.13
         run: uv python install 3.13
       - name: Install dependencies with uv
-        run: uv pip sync uv.lock
+        run: uv sync
       - name: Build package
         run: uv tool install build && uvx --from build pyproject-build
       - name: Prepare release body and flags

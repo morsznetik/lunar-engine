@@ -18,6 +18,6 @@ jobs:
       - name: Install Python 3.13
         run: uv python install 3.13
       - name: Install dependencies with uv
-        run: uv pip sync uv.lock
+        run: uv sync
       - name: Run pre-commit hooks
         run: uv run pre-commit run --all-files
