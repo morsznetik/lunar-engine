@@ -53,9 +53,9 @@ wheels = [
 [[package]]
 name = "lunar-engine"
 version = "0.1.0"
-source = { virtual = "." }
+source = { editable = "." }
 
-[package.optional-dependencies]
+[package.dev-dependencies]
 dev = [
     { name = "basedpyright" },
     { name = "pre-commit" },
@@ -63,12 +63,13 @@ dev = [
 ]
 
 [package.metadata]
-requires-dist = [
-    { name = "basedpyright", marker = "extra == 'dev'" },
-    { name = "pre-commit", marker = "extra == 'dev'" },
-    { name = "ruff", marker = "extra == 'dev'" },
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "basedpyright" },
+    { name = "pre-commit" },
+    { name = "ruff" },
 ]
-provides-extras = ["dev"]
 
 [[package]]
 name = "nodeenv"
