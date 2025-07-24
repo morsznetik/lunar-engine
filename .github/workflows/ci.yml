@@ -5,12 +5,14 @@ on:
     branches: ["**"]
   pull_request:
     branches: ["**"]
+  workflow_dispatch:
 
 env:
   PC_HASH: placeholder
 
 jobs:
   lint:
+    if: github.event_name == 'workflow_dispatch' || !startsWith(github.event.head_commit.message, 'docs')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
