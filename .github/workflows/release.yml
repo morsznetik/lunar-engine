@@ -1,0 +1,57 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - '*'
+
+jobs:
+  github-release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+      - name: Install Python 3.13
+        run: uv python install 3.13
+      - name: Install dependencies with uv
+        run: uv pip sync uv.lock
+      - name: Build package
+        run: uv tool install build && uvx --from build pyproject-build
+      - name: Prepare release body and flags
+        id: prep_release
+        run: |
+          LAST_TAG=$(git describe --tags --abbrev=0 HEAD^)
+          THIS_TAG=$(git describe --tags --abbrev=0)
+          LAST_DATE=$(git log -1 --format=%ai $LAST_TAG | cut -d' ' -f1)
+          THIS_DATE=$(git log -1 --format=%ai $THIS_TAG | cut -d' ' -f1)
+          DAYS_AGO=$(( ( $(date -d "$THIS_DATE" +%s) - $(date -d "$LAST_DATE" +%s) )/(60*60*24) ))
+          COMMIT_COUNT=$(git rev-list --count $LAST_TAG..$THIS_TAG)
+          cat <<EOF > release_body.md
+          {Stuff here :3}
+
+          ---
+
+          There were $COMMIT_COUNT commits in the last $DAYS_AGO days since the last release!
+          **Full Changelog**: https://github.com/morsznetik/lunar-engine/compare/$LAST_TAG...$THIS_TAG
+          EOF
+          echo "release_body_path=release_body.md" >> $GITHUB_OUTPUT
+          # Check if should be a prerelease, checks for beta and v0.x tags
+          prerelease=false
+          if [[ "$THIS_TAG" == *-beta || "$THIS_TAG" == v0* ]]; then
+            prerelease=true
+          fi
+
+          echo "prerelease=$prerelease" >> "$GITHUB_OUTPUT"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          draft: true
+          files: dist/*
+          body_path: release_body.md
+          prerelease: ${{ steps.prep_release.outputs.prerelease }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
