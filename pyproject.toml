@@ -4,7 +4,9 @@ version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.13"
-dependencies = []
+dependencies = [
+    "prompt_toolkit",
+]
 
 [dependency-groups]
 dev = [
@@ -18,4 +20,5 @@ requires = ["setuptools>=61"]
 build-backend = "setuptools.build_meta"
 
 [tool.basedpyright]
-typeCheckingMode = "strict"
+typeCheckingMode = "all"
+reportExplicitAny = false
