@@ -22,3 +22,4 @@ build-backend = "setuptools.build_meta"
 [tool.basedpyright]
 typeCheckingMode = "all"
 reportExplicitAny = false
+reportUnusedCallResult = false
