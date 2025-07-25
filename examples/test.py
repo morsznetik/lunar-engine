@@ -11,6 +11,9 @@ prompt = Prompt(
 with prompt:
     try:
         for input in prompt:
+            if input == "exit":
+                # should not raise
+                break
             print(input)
     except LunarEngineInterrupt:
         print("Goodbye!")
@@ -24,5 +27,7 @@ try:
         print(input)
 except LunarEngineInterrupt:
     print("Goodbye!")
+except RuntimeError:
+    print("passed")
 
 assert not prompt

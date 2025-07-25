@@ -103,7 +103,11 @@ class Prompt:
 
     def __iter__(self) -> Generator[str, Any, None]:
         # we have to be in the context to iterate safely
-        if not self._in_context:
-            raise RuntimeError("Prompt can only be iterated within its context")
-        while self._running:
-            yield self.get_input()
+        try:
+            if not self._in_context:
+                raise RuntimeError("Prompt can only be iterated within its context")
+            while self._running:
+                yield self.get_input()
+        except Exception:
+            self._running = False
+            raise
