@@ -86,6 +86,7 @@ class Prompt:
         return self._running
 
     def __enter__(self) -> Self:
+        # enter context
         self._running = True
         self._in_context = True
         return self
@@ -96,6 +97,7 @@ class Prompt:
         exc_val: BaseException | None,
         exc_tb: TracebackType | None,
     ) -> None:
+        # clean up state
         self._running = False
         self._in_context = False
 
