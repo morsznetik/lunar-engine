@@ -1,4 +1,6 @@
-from typing import Callable
+from typing import Any, Self
+from types import TracebackType
+from collections.abc import Generator
 from prompt_toolkit import PromptSession
 from prompt_toolkit.completion import Completer
 from prompt_toolkit.history import History, InMemoryHistory
@@ -9,6 +11,18 @@ from .exceptions import LunarEngineInterrupt
 
 
 class Prompt:
+    """
+    Prompt for Lunar Engine. Throws LunarEngineInterrupt on KeyboardInterrupt and EOFError.
+
+    Basic usage:
+        >>> with Prompt('> ') as p:
+        ...     for user_input in p:
+        ...         print(user_input)
+        >>> assert not p
+
+    Supports context management and iteration. Evaluates as True while the prompt loop is active.
+    """
+
     _prompt: str
     _rprompt: str | None
     _completer: Completer | None
@@ -18,6 +32,7 @@ class Prompt:
     _style: BaseStyle | None
     _session: PromptSession[str]
     _running: bool
+    _in_context: bool
 
     def __init__(
         self,
@@ -40,6 +55,8 @@ class Prompt:
         self._style = style
         self._auto_suggest = auto_suggest or AutoSuggestFromHistory()
         self._session = session or PromptSession(
+            message=self._prompt,
+            rprompt=self._rprompt,
             completer=self._completer,
             history=self._history,
             clipboard=self._clipboard,
@@ -50,6 +67,7 @@ class Prompt:
             eof_exception=LunarEngineInterrupt,
         )
         self._running = True
+        self._in_context = False  # track if in context manager
 
     @property
     def running(self) -> bool:
@@ -62,18 +80,28 @@ class Prompt:
         """
         Display the prompt and return user input as a string.
         """
-        return self._session.prompt(self._prompt, rprompt=self._rprompt)
+        return self._session.prompt()
 
-    def run_loop(self, callback: Callable[[str], None] | None = None) -> None:
-        """
-        Continuously prompt for input until interrupted.
-        If a callback is provided, it will be called with each input string.
-        """
-        try:
-            while self._running:
-                user_input = self.get_input()
-                if callback:
-                    callback(user_input)
-        except Exception:
-            self._running = False
-            raise
+    def __bool__(self) -> bool:
+        return self._running
+
+    def __enter__(self) -> Self:
+        self._running = True
+        self._in_context = True
+        return self
+
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_val: BaseException | None,
+        exc_tb: TracebackType | None,
+    ) -> None:
+        self._running = False
+        self._in_context = False
+
+    def __iter__(self) -> Generator[str, Any, None]:
+        # we have to be in the context to iterate safely
+        if not self._in_context:
+            raise RuntimeError("Prompt can only be iterated within its context")
+        while self._running:
+            yield self.get_input()

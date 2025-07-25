@@ -8,7 +8,21 @@ prompt = Prompt(
     completer=FuzzyWordCompleter(["hello", "world"]),
 )
 
+with prompt:
+    try:
+        for input in prompt:
+            print(input)
+    except LunarEngineInterrupt:
+        print("Goodbye!")
+
+assert not prompt
+
+prompt._running = True  # pyright: ignore[reportPrivateUsage]
+
 try:
-    prompt.run_loop(callback=lambda x: print(x) if x != "" else None)
+    for input in prompt:
+        print(input)
 except LunarEngineInterrupt:
     print("Goodbye!")
+
+assert not prompt
