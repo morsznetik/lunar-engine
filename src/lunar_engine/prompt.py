@@ -7,7 +7,7 @@ from prompt_toolkit.history import History, InMemoryHistory
 from prompt_toolkit.styles import BaseStyle
 from prompt_toolkit.auto_suggest import AutoSuggest, AutoSuggestFromHistory
 from prompt_toolkit.clipboard import Clipboard, InMemoryClipboard
-from .exceptions import LunarEngineInterrupt
+from .exceptions import InterruptException
 
 
 class Prompt:
@@ -63,8 +63,8 @@ class Prompt:
             style=self._style,
             auto_suggest=self._auto_suggest,
             search_ignore_case=True,
-            interrupt_exception=LunarEngineInterrupt,
-            eof_exception=LunarEngineInterrupt,
+            interrupt_exception=InterruptException,
+            eof_exception=InterruptException,
         )
         self._running = True
         self._in_context = False  # track if in context manager

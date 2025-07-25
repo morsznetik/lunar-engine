@@ -6,7 +6,7 @@ class LunarEngineException(Exception):
     pass
 
 
-class LunarEngineInterrupt(LunarEngineException):
+class InterruptException(LunarEngineException):
     """
     Exception raised when the something interrupts the prompt loop.
     """
