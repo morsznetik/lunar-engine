@@ -2,6 +2,7 @@ from lunar_engine.prompt import CommandCompleter, Prompt
 from lunar_engine.command import command, get_registry
 from lunar_engine.exceptions import InterruptException
 from prompt_toolkit.completion import FuzzyWordCompleter
+from typing import Literal
 
 prompt = Prompt(
     "> ",
@@ -105,6 +106,23 @@ def push(remote: str = "origin", branch: str = "master") -> str:
 def checkout(branch: str) -> str:
     """Switch branches or restore working tree files"""
     return f"checking out {branch}"
+
+
+@command()
+def test_literal(
+    a: Literal["a", "b", "c"],
+    b: Literal[True, False, None, 1, 2, 3, "a", "b", "c"],
+) -> str:
+    """Test literal completion."""
+    return f"test literal {a} {b}"
+
+
+@command()
+def test_infer(
+    a: Literal["a", "b", "c"] | None,
+    b: str | None,
+) -> str:
+    return f"{a=} {b=}"
 
 
 registry = get_registry()

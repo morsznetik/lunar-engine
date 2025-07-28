@@ -94,8 +94,20 @@ class CommandRegistry:
         # infers name, description, and parent from function if not provided
         cmd_name = name or func.__name__
 
-        if cmd_name in self._commands:
-            raise ValueError(f"Command {cmd_name!r} is already registered")
+        # validate uniqueness within the appropriate scope, root-level or under a parent
+        if parent is None:
+            # root-level commands cannot share names
+            if cmd_name in self._commands:
+                raise ValueError(f"Command {cmd_name!r} is already registered")
+        else:
+            # When attaching to a parent, ensure the parent exists and the subcommand name is unique
+            if parent not in self._commands:
+                raise ValueError(f"Parent command {parent!r} not found")
+
+            if cmd_name in self._commands[parent].children:
+                raise ValueError(
+                    f"Subcommand {cmd_name!r} is already registered under {parent!r}"
+                )
 
         if description is None and func.__doc__:
             # cleandoc so we don't get weird formatting
@@ -107,15 +119,20 @@ class CommandRegistry:
             description=description,
         )
 
-        # set up a parent-child relationship if parent specified
+        # set up a parent-child relationship if a parent is specified
         if parent:
-            if parent not in self._commands:
-                raise ValueError(f"Parent command {parent!r} not found")
             parent_cmd = self._commands[parent]
             cmd_info.parent = weakref.ref(parent_cmd)
             parent_cmd.children[cmd_name] = cmd_info
 
-        self._commands[cmd_name] = cmd_info
+        # keep a flat mapping of all commands including nested for fast lookup
+        # this allows later registrations to reference non-root parents
+        # if a duplicate name already exists, we only overwrite it when the existing
+        # command is also a non-root command (i.e. it has a parent)
+        # this avoids collisions between different subcommand branches while still protecting
+        # root-level command uniqueness enforced earlier
+        if cmd_name not in self._commands or cmd_info.parent is None:
+            self._commands[cmd_name] = cmd_info
         return cmd_info
 
 
