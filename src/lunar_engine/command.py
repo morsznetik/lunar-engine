@@ -50,10 +50,12 @@ class CommandRegistry:
     """Registry for storing and managing commands in a tree."""
 
     def __init__(self) -> None:
-        # check if _commands is already initialized so that we don't override it
+        # all instances share the same _commands for now
         # *support multiple registries in the future
-        if not hasattr(self, "_commands"):
-            self._commands: dict[str, CommandInfo] = {}
+        if not hasattr(CommandRegistry, "_commands"):
+            CommandRegistry._commands: dict[str, CommandInfo] = {}
+
+        self._commands = CommandRegistry._commands
 
     def __iter__(self) -> Iterator[CommandInfo]:
         return iter(self._commands.values())
