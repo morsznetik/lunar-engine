@@ -1,4 +1,5 @@
-from lunar_engine.prompt import Prompt
+from lunar_engine.prompt import CommandCompleter, Prompt
+from lunar_engine.command import command, get_registry
 from lunar_engine.exceptions import InterruptException
 from prompt_toolkit.completion import FuzzyWordCompleter
 
@@ -38,3 +39,119 @@ except RuntimeError:
     print("passed")
 
 assert not prompt
+
+
+# Define some example commands
+@command()
+def hello(name: str) -> str:
+    """Say hello to someone."""
+    return f"hello {name}"
+
+
+@command()
+def add(*nums: float | int) -> str:
+    """Add numbers together."""
+    return str(sum(nums))
+
+
+@command()
+def add_three_nums(a: float, b: float, c: float) -> str:
+    """Add three numbers together."""
+    return str(a + b + c)
+
+
+@command()
+def help() -> str:
+    """Show available commands and their descriptions."""
+    registry = get_registry()
+    lines: list[str] = []
+    for cmd in registry:
+        desc = cmd.description or "No description"
+        lines.append(f"{cmd.name}: {desc}")
+    return "\n".join(lines)
+
+
+@command()
+def exit() -> None:
+    """Exit the CLI."""
+    raise InterruptException
+
+
+@command()
+def test(a: int, b: str | None = None, c: int = 0) -> str:
+    """Test command."""
+    return f"{a=} {b=} {c=}"
+
+
+@command()
+def git():
+    """Git version control"""
+    pass
+
+
+@command(parent=git)
+def commit(message: str) -> str:
+    """Record changes to the repository"""
+    return f"committing {message}"
+
+
+@command(parent=git)
+def push(remote: str = "origin", branch: str = "master") -> str:
+    """Update remote refs along with associated objects"""
+    return f"pushing {remote} {branch}"
+
+
+@command(parent=git)
+def checkout(branch: str) -> str:
+    """Switch branches or restore working tree files"""
+    return f"checking out {branch}"
+
+
+registry = get_registry()
+
+# Create a CLI prompt with command completion
+prompt2 = Prompt(
+    "> ",
+    rprompt="Welcome to Lunar CLI!",
+    completer=CommandCompleter(),
+)
+
+del registry["1"]
+
+with prompt2:
+    try:
+        for input_line in prompt2:
+            try:
+                parts = input_line.strip().split()
+                if not parts:
+                    continue
+
+                # Traverse command tree to find the correct command
+                cmd_info = registry[parts[0]]
+                if not cmd_info:
+                    print(f"Unknown command: {parts[0]}")
+                    continue
+
+                args_start_index = 1
+                for i, part in enumerate(parts[1:], 1):
+                    if part in cmd_info.children:
+                        cmd_info = cmd_info.children[part]
+                        args_start_index = i + 1
+                    else:
+                        break  # No more subcommands
+
+                args = parts[args_start_index:]
+
+                # Execute command
+                result = cmd_info.func(*args)
+                if result is not None:
+                    print(result)
+
+            except InterruptException:
+                print("Goodbye!")
+                break
+            except Exception as e:
+                print(f"Error: {e}")
+
+    except InterruptException:
+        print("\nGoodbye!")
