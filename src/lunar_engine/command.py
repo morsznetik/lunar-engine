@@ -157,20 +157,20 @@ def command[T: CommandFunc](
         parent: Optional parent command function for subcommands
         register: Whether to register immediately or wait for manual registration
 
-    Example:
-        @command()
-        def echo(string: str) -> str:
-            '''Echo the input string.'''
-            return string
+    Basic usage:
+        >>> @command()
+        ... def echo(string: str) -> str:
+        ...     '''Echo the input string.'''
+        ...     return string
 
-        @command()
-        def calc():
-            '''A calculator command'''
-            pass
+        >>> @command()
+        ... def calc():
+        ...     '''A calculator command'''
+        ...     pass
 
-        @command(parent=calc)
-        def add_command(*nums: int | float) -> str:
-            return str(sum(nums))
+        >>> @command(parent=calc)
+        ... def add_command(*nums: int | float) -> str:
+        ...     return str(sum(nums))
     """
 
     def decorator(func: T) -> T:
