@@ -93,12 +93,11 @@ class Shell:
     It then executes them and prints the result, if any.
 
     Basic usage:
-        >>> registry = CommandRegistry()
-        >>> prompt = Prompt("> ", completer=CommandCompleter(registry))
-        >>> shell = Shell(registry)
+        >>> prompt = Prompt("> ")
+        >>> shell = Shell()
         >>> shell.run(prompt)
 
-    It may be subclassed to override some methods, but should only be instantiated once.
+    The prompt passed to shell must have a completer of type CommandCompleter. Shell should only be instantiated once.
     """
 
     _registry: CommandRegistry
@@ -112,7 +111,7 @@ class Shell:
         handlers: HandlerRegistry | None = None,
     ) -> Self:
         if cls._instance:
-            raise RuntimeError(f"{repr(cls)} cannot be instantiated more than once")
+            raise RuntimeError(f"{type(cls)} cannot be instantiated more than once")
         cls._instance = True
         return super(Shell, cls).__new__(cls)
 
@@ -122,7 +121,7 @@ class Shell:
         handlers: HandlerRegistry | None = None,
     ) -> None:
         self._registry = registry or get_registry()
-        # TODO: pls figure out a wat to not use globals name wrangling
+        # TODO: pls figure out a way to not use globals name wrangling
         self._handlers = handlers or globals()["handlers"]
         self._prompt = None
 

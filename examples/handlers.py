@@ -6,7 +6,7 @@ from lunar_engine.command import command, get_registry
 
 @handlers.on_unknown_command
 def unknown_command(name: str) -> None:
-    print(f"Dumbass {name} is not a command")
+    print(f"Oops! {name} is not a command")
 
 
 @handlers.on_interrupt
