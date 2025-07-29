@@ -275,39 +275,31 @@ class CommandCompleter(Completer):
             # if not, show nothing for invalid command paths
             return
 
+        # try to complete arguments first
+        yield from self._complete_arguments(context)
+
+        # then show subcommands only if we haven't started typing arguments
         if self._should_complete_subcommands(context):
             yield from self._complete_subcommands(context)
-        else:
-            yield from self._complete_arguments(context)
 
     def _should_complete_subcommands(self, context: CompletionContext) -> bool:
         command = context.command
         parsed = context.parsed
 
-        # no subcommands
+        # no subcommands available
         if not command or not command.children:
             return False
 
-        # already have arguments or flags
+        # if we already have arguments or flags, don't show subcommands
         if parsed.arg_parts or any(word.startswith("--") for word in parsed.arg_parts):
             return False
 
-        # current word is a flag
+        # if current word is a flag, don't show subcommands
         if parsed.current_word.startswith("--"):
             return False
 
-        # at space after command with no args
-        if parsed.ends_with_space and not parsed.arg_parts:
-            return True
-
-        # compare fuzzy match scores to decide
-        if parsed.current_word:
-            subcommand_score = self._get_best_subcommand_score(
-                command, parsed.current_word
-            )
-            argument_score = self._get_best_argument_score(command, parsed.current_word)
-            return subcommand_score > argument_score
-
+        # if we're at a space after command with no args, show both args and subcommands
+        # but the _generate_completions method should handle showing args first
         return True
 
     def _complete_root_commands(self, current_word: str) -> Iterator[Completion]:
@@ -382,14 +374,13 @@ class CommandCompleter(Completer):
             if not self._should_suggest_positional(param, context, positional_params):
                 return None
             complete_text = param.name
-            display_text = param.name
+            display_text = complete_text
 
         # check fuzzy match
         if not self._matches_fuzzy(context.parsed.current_word, complete_text):
             return None
 
         # build display metadata
-        # ignore param.default return type because the type checker cannot infer it statically
         default = param.default  # pyright: ignore[reportAny]
         type_str = self._format_parameter_type(param)
         if default != inspect.Parameter.empty:
@@ -399,8 +390,8 @@ class CommandCompleter(Completer):
             display_text += " (optional)"
 
         return self._create_completion(
-            complete_text,
-            context.parsed.current_word,
+            "",  # empty string so we dont insert any text
+            context.parsed.current_word,  # what the user typed
             display=display_text,
             display_meta=type_str,
         )
