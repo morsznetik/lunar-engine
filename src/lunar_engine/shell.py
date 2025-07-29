@@ -214,9 +214,7 @@ class Shell:
                             args = parts[args_start_index:]
 
                             # Execute command
-                            result = cmd_info.func(*args)
-                            if result is not None:
-                                print(result)
+                            cmd_info.func(*args)
 
                         except InterruptException:
                             self._handlers[Event.INTERRUPT]()
