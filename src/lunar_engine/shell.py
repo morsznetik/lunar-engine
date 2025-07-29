@@ -1,3 +1,4 @@
+from typing import Self
 from lunar_engine.prompt import Prompt
 from lunar_engine.command import get_registry
 from lunar_engine.exceptions import InterruptException
@@ -16,7 +17,7 @@ class Shell:
 
     _instance: bool = False
 
-    def __new__(cls):
+    def __new__(cls) -> Self:
         if cls._instance:
             raise RuntimeError(f"{repr(Shell)} cannot be instantiated more than once")
         cls._instance = True
@@ -42,7 +43,7 @@ class Shell:
 
     def run(
         self, prompt: Prompt, start_text: str | None = None, end_text: str | None = None
-    ):
+    ) -> None:
         """
         Runs the shell loop with the specified prompt and other configuration.
         """
