@@ -16,112 +16,6 @@ from .command import CommandRegistry, CommandInfo, get_registry
 import inspect
 
 
-class Prompt:
-    """
-    Prompt for Lunar Engine. Throws InterruptException on KeyboardInterrupt and EOFError.
-
-    Basic usage:
-        >>> registry = CommandRegistry()
-        >>> with Prompt('> ', completer=CommandCompleter(registry)) as p:
-        ...     for user_input in p:
-        ...         print(user_input)
-        >>> assert not p
-
-    Supports context management and iteration. Evaluates as True while the prompt loop is active.
-    """
-
-    _prompt: str
-    _rprompt: str | None
-    _completer: Final[Completer | None]
-    _auto_suggest: Final[AutoSuggest | None]
-    _history: Final[History | None]
-    _clipboard: Final[Clipboard | None]
-    _style: Final[BaseStyle | None]
-    _session: Final[PromptSession[str]]
-    _running: bool
-    _in_context: bool
-
-    def __init__(
-        self,
-        prompt: str,
-        /,
-        *,
-        rprompt: str | None = None,
-        completer: Completer | None = None,
-        auto_suggest: AutoSuggest | None = None,
-        history: History | None = None,
-        clipboard: Clipboard | None = None,
-        style: BaseStyle | None = None,
-        session: PromptSession[str] | None = None,
-    ) -> None:
-        self._prompt = prompt
-        self._rprompt = rprompt
-        self._completer = completer or CommandCompleter()
-        self._history = history or InMemoryHistory()
-        self._clipboard = clipboard or InMemoryClipboard()
-        self._style = style
-        self._auto_suggest = auto_suggest or AutoSuggestFromHistory()
-        self._session = session or PromptSession(
-            message=self._prompt,
-            rprompt=self._rprompt,
-            completer=self._completer,
-            history=self._history,
-            clipboard=self._clipboard,
-            style=self._style,
-            auto_suggest=self._auto_suggest,
-            search_ignore_case=True,
-            interrupt_exception=InterruptException,
-            eof_exception=InterruptException,
-        )
-        self._running = True
-        self._in_context = False  # track if in context manager
-
-    @property
-    def running(self) -> bool:
-        """
-        Check if the prompt loop is running.
-        """
-        return self._running
-
-    def get_input(self) -> str:
-        """
-        Display the prompt and return user input as a string.
-        """
-        return self._session.prompt()
-
-    def __bool__(self) -> bool:
-        return self._running
-
-    def __enter__(self) -> Self:
-        # enter context
-        self._running = True
-        self._in_context = True
-        return self
-
-    def __exit__(
-        self,
-        exc_type: type[BaseException] | None,
-        exc_val: BaseException | None,
-        exc_tb: TracebackType | None,
-    ) -> None:
-        # clean up state
-        self._running = False
-        self._in_context = False
-
-    def __iter__(self) -> Generator[str, None, None]:
-        # catch all exceptions to ensure we don't leave the prompt in a bad state
-        # for an edge case where we are not in context but we try to iterate over it
-        try:
-            # we have to be in context to iterate safely
-            if not self._in_context:
-                raise RuntimeError("Prompt can only be iterated within its context")
-            while self._running:
-                yield self.get_input()
-        except Exception:
-            self._running = False
-            raise
-
-
 @dataclass(frozen=True)
 class ParsedCommand:
     command_parts: list[str]
@@ -160,6 +54,14 @@ class CommandCompleter(Completer):
         self._registry = registry or get_registry()
         self._min_match_score = min_match_score
         self._strict_positional = strict_positional
+
+    @property
+    def registry(self) -> CommandRegistry:
+        return self._registry
+
+    @registry.setter
+    def registry(self, registry: CommandRegistry) -> None:
+        self._registry = registry
 
     # ============================================================================
     # API
@@ -642,3 +544,113 @@ class CommandCompleter(Completer):
             display=display or text,
             display_meta=display_meta,
         )
+
+
+class Prompt:
+    """
+    Prompt for Lunar Engine. Throws InterruptException on KeyboardInterrupt and EOFError.
+
+    Basic usage:
+        >>> registry = CommandRegistry()
+        >>> with Prompt('> ', completer=CommandCompleter(registry)) as p:
+        ...     for user_input in p:
+        ...         print(user_input)
+        >>> assert not p
+
+    Supports context management and iteration. Evaluates as True while the prompt loop is active.
+    """
+
+    _prompt: str
+    _rprompt: str | None
+    _completer: Final[CommandCompleter]
+    _auto_suggest: Final[AutoSuggest]
+    _history: Final[History]
+    _clipboard: Final[Clipboard]
+    _style: Final[BaseStyle | None]
+    _session: Final[PromptSession[str]]
+    _running: bool
+    _in_context: bool
+
+    def __init__(
+        self,
+        prompt: str,
+        /,
+        *,
+        rprompt: str | None = None,
+        completer: CommandCompleter | None = None,
+        auto_suggest: AutoSuggest | None = None,
+        history: History | None = None,
+        clipboard: Clipboard | None = None,
+        style: BaseStyle | None = None,
+        session: PromptSession[str] | None = None,
+    ) -> None:
+        self._prompt = prompt
+        self._rprompt = rprompt
+        self._completer = completer or CommandCompleter()
+        self._history = history or InMemoryHistory()
+        self._clipboard = clipboard or InMemoryClipboard()
+        self._style = style
+        self._auto_suggest = auto_suggest or AutoSuggestFromHistory()
+        self._session = session or PromptSession(
+            message=self._prompt,
+            rprompt=self._rprompt,
+            completer=self._completer,
+            history=self._history,
+            clipboard=self._clipboard,
+            style=self._style,
+            auto_suggest=self._auto_suggest,
+            search_ignore_case=True,
+            interrupt_exception=InterruptException,
+            eof_exception=InterruptException,
+        )
+        self._running = True
+        self._in_context = False  # track if in context manager
+
+    @property
+    def running(self) -> bool:
+        """
+        Check if the prompt loop is running.
+        """
+        return self._running
+
+    @property
+    def completer(self) -> CommandCompleter:
+        return self._completer
+
+    def get_input(self) -> str:
+        """
+        Display the prompt and return user input as a string.
+        """
+        return self._session.prompt()
+
+    def __bool__(self) -> bool:
+        return self._running
+
+    def __enter__(self) -> Self:
+        # enter context
+        self._running = True
+        self._in_context = True
+        return self
+
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_val: BaseException | None,
+        exc_tb: TracebackType | None,
+    ) -> None:
+        # clean up state
+        self._running = False
+        self._in_context = False
+
+    def __iter__(self) -> Generator[str, None, None]:
+        # catch all exceptions to ensure we don't leave the prompt in a bad state
+        # for an edge case where we are not in context but we try to iterate over it
+        try:
+            # we have to be in context to iterate safely
+            if not self._in_context:
+                raise RuntimeError("Prompt can only be iterated within its context")
+            while self._running:
+                yield self.get_input()
+        except Exception:
+            self._running = False
+            raise
