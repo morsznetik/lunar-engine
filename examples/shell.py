@@ -10,16 +10,16 @@ prompt = Prompt("$ ", completer=CommandCompleter(registry))
 
 class MyShell(Shell):
     @override
-    def on_unknown_command(self, name: str):
-        print(f"Command not found: {name}")
+    def on_unknown_command(self, name: str) -> str:
+        return f"Command not found: {name}"
 
     @override
-    def on_interrupt(self):
-        print("Interrupted! Exiting.")
+    def on_interrupt(self) -> str:
+        return "Interrupted! Exiting."
 
     @override
-    def on_command_error(self, e: Exception):
-        print(f"An error occurred! {e}")
+    def on_command_error(self, e: Exception) -> str:
+        return f"An error occurred! {e}"
 
 
 @registry.command(description="A command.")

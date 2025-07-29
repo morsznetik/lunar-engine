@@ -1,4 +1,4 @@
-from typing import Self
+from typing import Self, Never
 import sys
 from lunar_engine.prompt import Prompt
 from lunar_engine.command import CommandRegistry, get_registry
@@ -41,28 +41,33 @@ class Shell:
         sys.stdout.write("\033[?1049l")
         sys.stdout.flush()
 
-    def on_unknown_command(self, name: str) -> None:
+    def on_unknown_command(self, name: str) -> str | Never:
         """Called when the user attempts to run an unknown command."""
-        print(f"Unknown command: {name}")
+        return f"Unknown command: {name}"
 
-    def on_interrupt(self) -> None:
+    def on_interrupt(self) -> str | Never:
         """
         Called if an InterruptException is raised.
         This will be run before the prompt loop is terminated.
         """
-        pass
+        return "Interrupted."
 
-    def on_command_error(self, e: Exception) -> None:
+    def on_command_error(self, e: Exception) -> str | Never:
         """
         Called if a command fails during execution.
         """
-        print(f"Error: {e}")
+        return f"Error: {e}"
 
     def run(
         self,
         prompt: Prompt,
+        /,
         start_text: str | None = None,
         use_alt_buffer: bool = True,
+        *,
+        on_unknown_command: str | None = None,
+        on_interrupt: str | None = None,
+        on_command_error: str | None = None,
     ) -> None:
         """
         Runs the shell loop with the specified prompt and other configuration.
@@ -71,6 +76,9 @@ class Shell:
             prompt: The Prompt instance to use for input
             start_text: Optional text to print at the beginning
             use_alt_buffer: Whether to use the terminal's alternative screen buffer
+            on_unknown_command: String (with '{name}') to handle unknown commands
+            on_interrupt: String to handle interrupts
+            on_command_error: String (with '{e}') to handle command errors
         """
 
         if use_alt_buffer:
@@ -91,7 +99,10 @@ class Shell:
                             # Traverse command tree to find the correct command
                             cmd_info = self._registry[parts[0]]
                             if not cmd_info:
-                                self.on_unknown_command(parts[0])
+                                if on_unknown_command is not None:
+                                    print(on_unknown_command.format(name=parts[0]))
+                                else:
+                                    print(self.on_unknown_command(parts[0]))
                                 continue
 
                             args_start_index = 1
@@ -110,15 +121,24 @@ class Shell:
                                 print(result)
 
                         except InterruptException:
-                            self.on_interrupt()
+                            if on_interrupt is not None:
+                                print(on_interrupt)
+                            else:
+                                print(self.on_interrupt())
                             break
                         except Exception as e:
-                            self.on_command_error(e)
+                            if on_command_error is not None:
+                                print(on_command_error.format(e=e))
+                            else:
+                                print(self.on_command_error(e))
 
                 except InterruptException:
                     if use_alt_buffer:
                         self._leave_alt_buffer()
-                    self.on_interrupt()
+                    if on_interrupt is not None:
+                        print(on_interrupt)
+                    else:
+                        print(self.on_interrupt())
 
         finally:
             if use_alt_buffer:
