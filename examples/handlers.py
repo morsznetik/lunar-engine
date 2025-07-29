@@ -24,9 +24,9 @@ def my_unknown_command(name: str) -> None:
 
 
 @command()
-def hello(name: str = "world", n: int = 1) -> str:
+def hello(name: str = "world", n: int = 1) -> None:
     """Hiii!! >;3"""
-    return "\n".join([f"Hello, {name}!"] * int(n))
+    print("\n".join([f"Hello, {name}!"] * int(n)))
 
 
 @command(parent=hello)
@@ -37,23 +37,23 @@ def fastfetch() -> None:
 
 
 @command()
-def switch_handler() -> str:
+def switch_handler() -> None:
     shell.handlers = my_handlers
-    return "Handler switched"
+    print("Handler switched")
 
 
 @command()
-def switch_to_secret_mode() -> str:
+def switch_to_secret_mode() -> None:
     shell.registry = my_commands
-    return "Commands switched"
+    print("Commands switched")
 
 
 my_commands = copy.deepcopy(get_registry())
 
 
 @my_commands.command()
-def secret(a: int, b: int) -> str:
-    return f"{a} + {b} = {a + b}"
+def secret(a: int, b: int) -> None:
+    print(f"{a} + {b} = {a + b}")
 
 
 shell.run(

@@ -47,31 +47,31 @@ registry = get_registry()
 
 # Define some example commands
 @command()
-def hello(name: str) -> str:
+def hello(name: str) -> None:
     """Say hello to someone."""
-    return f"hello {name}"
+    print(f"hello {name}")
 
 
 @command()
-def add(*nums: float | int) -> str:
+def add(*nums: float | int) -> None:
     """Add numbers together."""
-    return str(sum(nums))
+    print(str(sum(nums)))
 
 
 @command()
-def add_three_nums(a: float, b: float, c: float) -> str:
+def add_three_nums(a: float, b: float, c: float) -> None:
     """Add three numbers together."""
-    return str(a + b + c)
+    print(str(a + b + c))
 
 
 @command()
-def help() -> str:
+def help() -> None:
     """Show available commands and their descriptions."""
     lines: list[str] = []
     for cmd in registry:
         desc = cmd.description or "No description"
         lines.append(f"{cmd.name}: {desc}")
-    return "\n".join(lines)
+    print("\n".join(lines))
 
 
 @command()
@@ -81,9 +81,9 @@ def exit() -> None:
 
 
 @command()
-def test(a: int, b: str | None = None, c: int = 0) -> str:
+def test(a: int, b: str | None = None, c: int = 0) -> None:
     """Test command."""
-    return f"{a=} {b=} {c=}"
+    print(f"{a=} {b=} {c=}")
 
 
 @command()
@@ -93,38 +93,38 @@ def git():
 
 
 @command(parent=git)
-def commit(message: str) -> str:
+def commit(message: str) -> None:
     """Record changes to the repository"""
-    return f"committing {message}"
+    print(f"committing {message}")
 
 
 @command(parent=git)
-def push(remote: str = "origin", branch: str = "master") -> str:
+def push(remote: str = "origin", branch: str = "master") -> None:
     """Update remote refs along with associated objects"""
-    return f"pushing {remote} {branch}"
+    print(f"pushing {remote} {branch}")
 
 
 @command(parent=git)
-def checkout(branch: str) -> str:
+def checkout(branch: str) -> None:
     """Switch branches or restore working tree files"""
-    return f"checking out {branch}"
+    print(f"checking out {branch}")
 
 
 @command()
 def test_literal(
     a: Literal["a", "b", "c"],
     b: Literal[True, False, None, 1, 2, 3, "a", "b", "c"],
-) -> str:
+) -> None:
     """Test literal completion."""
-    return f"test literal {a} {b}"
+    print(f"test literal {a} {b}")
 
 
 @command()
 def test_infer(
     a: Literal["a", "b", "c"] | None,
     b: str | None,
-) -> str:
-    return f"{a=} {b=}"
+) -> None:
+    print(f"{a=} {b=}")
 
 
 # Create a CLI prompt with command completion
@@ -167,9 +167,7 @@ with prompt2:
                 args = parts[args_start_index:]
 
                 # Execute command
-                result = cmd_info.func(*args)
-                if result is not None:
-                    print(result)
+                cmd_info.func(*args)
 
             except InterruptException:
                 print("Goodbye!")

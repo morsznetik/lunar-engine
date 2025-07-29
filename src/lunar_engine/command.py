@@ -5,7 +5,7 @@ from dataclasses import dataclass, field
 from typing import Final, Self, get_type_hints
 from lunar_engine.exceptions import UntypedCommandException
 
-type CommandFunc = Callable[..., str | None]
+type CommandFunc = Callable[..., None]
 
 
 @dataclass
@@ -151,9 +151,9 @@ class CommandRegistry:
 
         Basic usage:
             >>> @command()
-            ... def echo(string: str) -> str:
+            ... def echo(string: str) -> None:
             ...     '''Echo the input string.'''
-            ...     return string
+            ...     print(string)
 
             >>> @command()
             ... def calc():
@@ -161,8 +161,8 @@ class CommandRegistry:
             ...     pass
 
             >>> @command(parent=calc)
-            ... def add_command(*nums: int | float) -> str:
-            ...     return str(sum(nums))
+            ... def add_command(*nums: int | float) -> None:
+            ...     print(str(sum(nums)))
         """
 
         def decorator(func: T) -> T:
