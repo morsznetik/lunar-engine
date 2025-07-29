@@ -56,7 +56,6 @@ class Shell:
         self,
         prompt: Prompt,
         start_text: str | None = None,
-        end_text: str | None = None,
         use_alt_buffer: bool = True,
     ) -> None:
         """
@@ -65,7 +64,6 @@ class Shell:
         Args:
             prompt: The Prompt instance to use for input
             start_text: Optional text to print at the beginning
-            end_text: Optional text to print at the end
             use_alt_buffer: Whether to use the terminal's alternative screen buffer
         """
         registry = get_registry()
@@ -120,6 +118,3 @@ class Shell:
         finally:
             if use_alt_buffer:
                 self._leave_alt_buffer()
-
-            if end_text:
-                print(end_text)
