@@ -7,10 +7,11 @@ from lunar_engine.exceptions import InterruptException
 class Shell:
     """
     Shell is a helper for running a Prompt loop. It parses user input for registered commands and their arguments and runs them.
+
     Basic usage:
-    >>> prompt = Prompt("> ")
-    >>> shell = Shell()
-    >>> shell.run(prompt)
+        >>> prompt = Prompt("> ")
+        >>> shell = Shell()
+        >>> shell.run(prompt)
 
     It may be subclassed to override some methods, but should only be instantiated once.
     """
