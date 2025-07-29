@@ -1,5 +1,5 @@
 from lunar_engine.prompt import CommandCompleter, Prompt
-from lunar_engine.command import command, get_registry
+from lunar_engine.command import command, get_registry, CommandRegistry
 from lunar_engine.exceptions import InterruptException
 from prompt_toolkit.completion import FuzzyWordCompleter
 from typing import Literal
@@ -135,6 +135,14 @@ prompt2 = Prompt(
 )
 
 del registry["1"]
+
+a = CommandRegistry()
+
+for cmd in registry:
+    print(cmd.name)
+
+for cmd in a:
+    print(cmd.name)
 
 with prompt2:
     try:

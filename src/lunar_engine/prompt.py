@@ -1,6 +1,7 @@
-from typing import Any, Self, override, Final
+from typing import Self, override, Final
 from types import TracebackType
 from collections.abc import Generator, Iterator
+from dataclasses import dataclass
 from difflib import SequenceMatcher
 from prompt_toolkit import PromptSession
 from prompt_toolkit.completion import Completer, Completion
@@ -120,6 +121,22 @@ class Prompt:
             raise
 
 
+@dataclass(frozen=True)
+class ParsedCommand:
+    command_parts: list[str]
+    arg_parts: list[str]
+    current_word: str
+    ends_with_space: bool
+
+
+@dataclass(frozen=True)
+class CompletionContext:
+    command: CommandInfo | None
+    parsed: ParsedCommand
+    used_keyword_params: set[str]
+    positional_count: int
+
+
 class CommandCompleter(Completer):
     """
     Simple fuzzy command completer for Lunar Engine that suggests commands and their arguments.
@@ -142,64 +159,73 @@ class CommandCompleter(Completer):
         self._min_match_score = min_match_score
         self._strict_positional = strict_positional
 
-    def _get_fuzzy_ratio(self, s1: str, s2: str) -> float:
-        """Calculate fuzzy match ratio between two strings."""
-        return SequenceMatcher(None, s1.lower(), s2.lower()).ratio()
+    # ============================================================================
+    # API
+    # ============================================================================
 
-    def _get_type_str(self, annotation: inspect.Parameter.empty | type | Any) -> str:
-        if annotation == inspect.Parameter.empty:
-            return "Any"
+    @override
+    def get_completions(
+        self, document: Document, complete_event: CompleteEvent
+    ) -> Iterator[Completion]:
+        text = document.text_before_cursor
 
-        if isinstance(annotation, type):
-            return annotation.__name__
+        if not text.strip():
+            yield from self._complete_root_commands("")
+            return
 
-        # clean up the type string representation
-        type_str = str(annotation)
-        patterns_to_remove = ["typing.", "class '", "'", "<", ">"]
-        for pattern in patterns_to_remove:
-            type_str = type_str.replace(pattern, "")
+        parsed = self._parse_command_line(text)
+        command = self._resolve_command(parsed.command_parts)
+        context = self._build_completion_context(command, parsed)
 
-        return type_str
+        yield from self._generate_completions(context)
 
-    def _parse_command_line(self, text: str) -> tuple[list[str], list[str], str]:
+    # ============================================================================
+    # PARSING & RESOLUTION
+    # ============================================================================
+
+    def _parse_command_line(self, text: str) -> ParsedCommand:
         words = text.split()
-        if not words:
-            return [], [], ""
+        ends_with_space = text.endswith(" ")
 
-        # we're starting a new word if the text ends with a space
-        if text.endswith(" "):
+        if not words:
+            return ParsedCommand([], [], "", ends_with_space)
+
+        # extract current word being typed
+        if ends_with_space:
             current_word = ""
         else:
             current_word = words[-1]
             words = words[:-1]
 
-        # find where command ends and arguments begin
-        command_parts = []
-        arg_parts = []
+        # split into command parts and argument parts
+        command_parts, arg_parts = self._split_command_and_args(words)
 
-        # start with first word as potential command
-        if words:
-            command_parts = [words[0]]
-            remaining = words[1:]
+        return ParsedCommand(command_parts, arg_parts, current_word, ends_with_space)
 
-            # walk through remaining words to find command boundary
-            current_cmd = self._registry[words[0]]
-            if current_cmd:
-                for word in remaining:
-                    # arguments start with -- or we've hit a word that's not a subcommand
-                    if word.startswith("--") or word not in current_cmd.children:
-                        break
+    def _split_command_and_args(self, words: list[str]) -> tuple[list[str], list[str]]:
+        if not words:
+            return [], []
 
-                    # this word is a subcommand, add it to command path
-                    command_parts.append(word)
-                    current_cmd = current_cmd.children[word]
+        command_parts = [words[0]]
+        remaining = words[1:]
 
-                # everything after command path is arguments
-                arg_parts = remaining[len(command_parts) - 1 :]
+        # follow command path through subcommands
+        current_cmd = self._registry[words[0]]
+        if current_cmd:
+            for word in remaining:
+                if word.startswith("--") or word not in current_cmd.children:
+                    break
+                command_parts.append(word)
+                current_cmd = current_cmd.children[word]
 
-        return command_parts, arg_parts, current_word
+            # everything after command path is arguments
+            arg_parts = remaining[len(command_parts) - 1 :]
+        else:
+            arg_parts = remaining
 
-    def _get_command_from_path(self, command_parts: list[str]) -> CommandInfo | None:
+        return command_parts, arg_parts
+
+    def _resolve_command(self, command_parts: list[str]) -> CommandInfo | None:
         if not command_parts:
             return None
 
@@ -214,207 +240,244 @@ class CommandCompleter(Completer):
 
         return current_cmd
 
-    def _should_complete_subcommands(
-        self,
-        command: CommandInfo,
-        arg_parts: list[str],
-        current_word: str,
-        text_ends_with_space: bool,
-    ) -> bool:
-        # no subcommands
-        if not command.children:
-            return False
-
-        # if we have any arguments, complete arguments
-        if arg_parts or any(word.startswith("--") for word in arg_parts):
-            return False
-
-        # if current word starts with --, complete arguments
-        if current_word.startswith("--"):
-            return False
-
-        # if we're at a space after the command with no args, complete subcommands
-        if text_ends_with_space and not arg_parts:
-            return True
-
-        # if current word matches a subcommand better than any argument
-        if current_word:
-            best_subcommand_score = max(
-                (
-                    self._get_fuzzy_ratio(current_word, name)
-                    for name in command.children.keys()
-                ),
-                default=0,
-            )
-
-            # get best argument score
-            sig = inspect.signature(command.func)
-            best_arg_score = 0
-            for param in sig.parameters.values():
-                if param.kind != param.VAR_KEYWORD:  # skip **kwargs
-                    param_name = param.name.lstrip("*")  # handle *args
-                    score = self._get_fuzzy_ratio(current_word, param_name)
-                    best_arg_score = max(best_arg_score, score)
-                else:
-                    raise NotImplementedError
-
-            # prefer subcommands if they match better
-            return best_subcommand_score > best_arg_score
-
-        return True
-
-    def _get_subcommand_completions(
-        self, command: CommandInfo, current_word: str
-    ) -> Iterator[Completion]:
-        for name, cmd in command.children.items():
-            if (
-                not current_word
-                or self._get_fuzzy_ratio(current_word, name) >= self._min_match_score
-            ):
-                yield Completion(
-                    name,
-                    start_position=-len(current_word),
-                    display=name,
-                    display_meta=cmd.description or "subcommand",
-                )
-
-    def _get_arg_completions(
-        self,
-        command: CommandInfo,
-        arg_parts: list[str],
-        current_word: str,
-    ) -> Iterator[Completion]:
-        sig = inspect.signature(command.func)
-
-        # skip commands with **kwargs for now
-        for param in sig.parameters.values():
-            if param.kind == param.VAR_KEYWORD:
-                return
-
-        # track used parameters
+    def _build_completion_context(
+        self, command: CommandInfo | None, parsed: ParsedCommand
+    ) -> CompletionContext:
         used_keyword_params: set[str] = set()
         positional_count = 0
 
-        # parse existing arguments
-        for arg in arg_parts:
+        # check if any arguments are already used
+        for arg in parsed.arg_parts:
             if arg.startswith("--"):
                 param_name = arg.lstrip("-").split("=")[0]
                 used_keyword_params.add(param_name)
             else:
                 positional_count += 1
 
-        # get parameter list
+        return CompletionContext(command, parsed, used_keyword_params, positional_count)
+
+    # ============================================================================
+    # COMPLETION GENERATION
+    # ============================================================================
+
+    def _generate_completions(self, context: CompletionContext) -> Iterator[Completion]:
+        if not context.command:
+            yield from self._complete_root_commands(context.parsed.current_word)
+            return
+
+        if self._should_complete_subcommands(context):
+            yield from self._complete_subcommands(context)
+        else:
+            yield from self._complete_arguments(context)
+
+    def _should_complete_subcommands(self, context: CompletionContext) -> bool:
+        command = context.command
+        parsed = context.parsed
+
+        # no subcommands
+        if not command or not command.children:
+            return False
+
+        # already have arguments or flags
+        if parsed.arg_parts or any(word.startswith("--") for word in parsed.arg_parts):
+            return False
+
+        # current word is a flag
+        if parsed.current_word.startswith("--"):
+            return False
+
+        # at space after command with no args
+        if parsed.ends_with_space and not parsed.arg_parts:
+            return True
+
+        # compare fuzzy match scores to decide
+        if parsed.current_word:
+            subcommand_score = self._get_best_subcommand_score(
+                command, parsed.current_word
+            )
+            argument_score = self._get_best_argument_score(command, parsed.current_word)
+            return subcommand_score > argument_score
+
+        return True
+
+    def _complete_root_commands(self, current_word: str) -> Iterator[Completion]:
+        for cmd_info in self._registry:
+            if cmd_info and cmd_info.parent is None:
+                if self._matches_fuzzy(current_word, cmd_info.name):
+                    yield self._create_completion(
+                        cmd_info.name,
+                        current_word,
+                        display_meta=cmd_info.description or "command",
+                    )
+
+    def _complete_subcommands(self, context: CompletionContext) -> Iterator[Completion]:
+        command = context.command
+        current_word = context.parsed.current_word
+
+        if not command or not command.children:
+            return
+
+        for name, cmd in command.children.items():
+            if self._matches_fuzzy(current_word, name):
+                yield self._create_completion(
+                    name, current_word, display_meta=cmd.description or "subcommand"
+                )
+
+    def _complete_arguments(self, context: CompletionContext) -> Iterator[Completion]:
+        if not context.command:
+            return
+
+        sig = inspect.signature(context.command.func)
+
+        # skip commands with **kwargs for now
+        if any(p.kind == p.VAR_KEYWORD for p in sig.parameters.values()):
+            return
+
         params = list(sig.parameters.values())
         positional_params = [
             p for p in params if p.kind in (p.POSITIONAL_ONLY, p.POSITIONAL_OR_KEYWORD)
         ]
 
         for param in params:
-            param_name = param.name
+            completion = self._create_parameter_completion(
+                param, context, positional_params
+            )
+            if completion:
+                yield completion
 
-            # skip already used keyword parameters
-            if param_name in used_keyword_params and param.kind != param.VAR_POSITIONAL:
-                continue
-
-            # handle different parameter types
-            if param.kind == param.KEYWORD_ONLY:
-                # always suggest keyword-only as --flag
-                complete_text = f"--{param_name}"
-                display_text = complete_text
-
-            elif param.kind == param.VAR_POSITIONAL:
-                # *args - can always be added (for now)
-                complete_text = param_name.lstrip("*")
-                display_text = f"*{complete_text}"
-
-            else:
-                # regular positional parameter
-                # show all arguments when none have been provided yet; otherwise enforce strict order
-                if self._strict_positional and positional_count > 0:
-                    # in strict mode, only suggest next positional parameter
-                    try:
-                        param_index = positional_params.index(param)
-                        if param_index != positional_count:
-                            continue
-                    except ValueError:
-                        continue
-
-                complete_text = param_name
-                display_text = param_name
-
-            # the next 3 type ignores the types for param.annotation, param.default cannot be inferred
-            # get type information
-            type_str = self._get_type_str(param.annotation)  # pyright: ignore[reportAny]
-
-            # add default value if present
-            if param.default != inspect.Parameter.empty:  # pyright: ignore[reportAny]
-                type_str += f" = {param.default!r}"  # pyright: ignore[reportAny]
-                display_text += " (optional)"
-            elif "| None" in type_str:
-                display_text += " (optional)"
-
-            # check if this matches current word
-            if (
-                not current_word
-                or self._get_fuzzy_ratio(current_word, complete_text)
-                >= self._min_match_score
-            ):
-                yield Completion(
-                    complete_text,
-                    start_position=-len(current_word) if current_word else 0,
-                    display=display_text,
-                    display_meta=type_str,
-                )
-
-    def _get_root_command_completions(self, current_word: str) -> Iterator[Completion]:
-        for cmd_info in self._registry:
-            if cmd_info and cmd_info.parent is None:  # only root commands
-                if (
-                    not current_word
-                    or self._get_fuzzy_ratio(current_word, cmd_info.name)
-                    >= self._min_match_score
-                ):
-                    yield Completion(
-                        cmd_info.name,
-                        start_position=-len(current_word),
-                        display=cmd_info.name,
-                        display_meta=cmd_info.description or "command",
-                    )
-
-    @override
-    def get_completions(
-        self, document: Document, complete_event: CompleteEvent
-    ) -> Iterator[Completion]:
-        text = document.text_before_cursor
-
-        # handle empty input
-        if not text.strip():
-            # HACK: f the input is empty, we must yield root command completions,
-            # otherwise prompt_toolkit's completion menu behaves oddly and doesn't show anything
-            yield from self._get_root_command_completions("")
-            return
-
-        # parse the command line
-        command_parts, arg_parts, current_word = self._parse_command_line(text)
-
-        # if no command parts, complete root commands
-        if not command_parts:
-            yield from self._get_root_command_completions(current_word)
-            return
-
-        # get the command
-        command = self._get_command_from_path(command_parts)
-        if not command:
-            # invalid command path, try completing root commands
-            yield from self._get_root_command_completions(current_word)
-            return
-
-        # determine what to complete
-        text_ends_with_space = text.endswith(" ")
-
-        if self._should_complete_subcommands(
-            command, arg_parts, current_word, text_ends_with_space
+    def _create_parameter_completion(
+        self,
+        param: inspect.Parameter,
+        context: CompletionContext,
+        positional_params: list[inspect.Parameter],
+    ) -> Completion | None:
+        # skip already used keyword parameters
+        if (
+            param.name in context.used_keyword_params
+            and param.kind != param.VAR_POSITIONAL
         ):
-            yield from self._get_subcommand_completions(command, current_word)
+            return None
+
+        # handle different parameter types
+        if param.kind == param.KEYWORD_ONLY:
+            complete_text = f"--{param.name}"
+            display_text = complete_text
+
+        elif param.kind == param.VAR_POSITIONAL:
+            complete_text = param.name.lstrip("*")
+            display_text = f"*{complete_text}"
+
         else:
-            yield from self._get_arg_completions(command, arg_parts, current_word)
+            # regular positional parameter
+            if not self._should_suggest_positional(param, context, positional_params):
+                return None
+            complete_text = param.name
+            display_text = param.name
+
+        # check fuzzy match
+        if not self._matches_fuzzy(context.parsed.current_word, complete_text):
+            return None
+
+        # build display metadata
+        # ignore param.default return type because the type checker cannot infer it statically
+        default = param.default  # pyright: ignore[reportAny]
+        type_str = self._format_parameter_type(param)
+        if default != inspect.Parameter.empty:
+            type_str += f" = {default!r}"
+            display_text += " (optional)"
+        elif "| None" in type_str:
+            display_text += " (optional)"
+
+        return self._create_completion(
+            complete_text,
+            context.parsed.current_word,
+            display=display_text,
+            display_meta=type_str,
+        )
+
+    def _should_suggest_positional(
+        self,
+        param: inspect.Parameter,
+        context: CompletionContext,
+        positional_params: list[inspect.Parameter],
+    ) -> bool:
+        if not self._strict_positional or context.positional_count == 0:
+            return True
+
+        try:
+            param_index = positional_params.index(param)
+            return param_index == context.positional_count
+        except ValueError:
+            return False
+
+    # ============================================================================
+    # UTILITIES
+    # ============================================================================
+
+    def _get_fuzzy_ratio(self, s1: str, s2: str) -> float:
+        return SequenceMatcher(None, s1.lower(), s2.lower()).ratio()
+
+    def _matches_fuzzy(self, input_word: str, target: str) -> bool:
+        if not input_word:
+            return True
+        return self._get_fuzzy_ratio(input_word, target) >= self._min_match_score
+
+    def _get_best_subcommand_score(
+        self, command: CommandInfo, current_word: str
+    ) -> float:
+        return max(
+            (
+                self._get_fuzzy_ratio(current_word, name)
+                for name in command.children.keys()
+            ),
+            default=0,
+        )
+
+    def _get_best_argument_score(
+        self, command: CommandInfo, current_word: str
+    ) -> float:
+        sig = inspect.signature(command.func)
+        best_score = 0
+
+        for param in sig.parameters.values():
+            if param.kind != param.VAR_KEYWORD:
+                param_name = param.name.lstrip("*")
+                score = self._get_fuzzy_ratio(current_word, param_name)
+                best_score = max(best_score, score)
+            else:
+                raise NotImplementedError
+
+        return best_score
+
+    def _format_parameter_type(self, param: inspect.Parameter) -> str:
+        # ignore param.annotation return type because the type checker cannot infer it statically
+        annotation = param.annotation  # pyright: ignore[reportAny]
+
+        # this case shouldn't happen but we handle it anyway
+        if annotation == inspect.Parameter.empty:
+            return "Any"
+
+        if isinstance(annotation, type):
+            return annotation.__name__
+
+        # clean up type string representation
+        type_str = str(annotation)  # pyright: ignore[reportAny]
+        patterns_to_remove = ["typing.", "class '", "'", "<", ">"]
+        for pattern in patterns_to_remove:
+            type_str = type_str.replace(pattern, "")
+
+        return type_str
+
+    def _create_completion(
+        self,
+        text: str,
+        current_word: str,
+        display: str | None = None,
+        display_meta: str | None = None,
+    ) -> Completion:
+        return Completion(
+            text,
+            start_position=-len(current_word) if current_word else 0,
+            display=display or text,
+            display_meta=display_meta,
+        )
