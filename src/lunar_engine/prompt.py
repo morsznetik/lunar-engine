@@ -32,7 +32,7 @@ class Prompt:
 
     _prompt: str
     _rprompt: str | None
-    _completer: Final[Completer]
+    _completer: Final[Completer | None]
     _auto_suggest: Final[AutoSuggest | None]
     _history: Final[History | None]
     _clipboard: Final[Clipboard | None]
@@ -47,7 +47,7 @@ class Prompt:
         /,
         *,
         rprompt: str | None = None,
-        completer: Completer,
+        completer: Completer | None = None,
         auto_suggest: AutoSuggest | None = None,
         history: History | None = None,
         clipboard: Clipboard | None = None,
@@ -56,7 +56,7 @@ class Prompt:
     ) -> None:
         self._prompt = prompt
         self._rprompt = rprompt
-        self._completer = completer
+        self._completer = completer or CommandCompleter()
         self._history = history or InMemoryHistory()
         self._clipboard = clipboard or InMemoryClipboard()
         self._style = style
