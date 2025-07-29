@@ -37,6 +37,7 @@ class CommandCompleter(Completer):
     Simple fuzzy command completer for Lunar Engine that suggests commands and their arguments.
 
     Args:
+        registry: Command registry to use for completions
         min_match_score: Minimum fuzzy match score for suggestions
         strict_positional: Whether to enforce strict positional argument order
     """
@@ -562,7 +563,7 @@ class Prompt:
 
     _prompt: str
     _rprompt: str | None
-    _completer: Final[CommandCompleter]
+    _completer: Final[Completer]
     _auto_suggest: Final[AutoSuggest]
     _history: Final[History]
     _clipboard: Final[Clipboard]
@@ -577,7 +578,7 @@ class Prompt:
         /,
         *,
         rprompt: str | None = None,
-        completer: CommandCompleter | None = None,
+        completer: Completer | None = None,
         auto_suggest: AutoSuggest | None = None,
         history: History | None = None,
         clipboard: Clipboard | None = None,
@@ -614,7 +615,7 @@ class Prompt:
         return self._running
 
     @property
-    def completer(self) -> CommandCompleter:
+    def completer(self) -> Completer:
         return self._completer
 
     def get_input(self) -> str:
