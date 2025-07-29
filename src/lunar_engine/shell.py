@@ -108,6 +108,7 @@ class Shell:
 
                         except InterruptException:
                             self.on_interrupt()
+                            break
                         except Exception as e:
                             self.on_command_error(e)
 
