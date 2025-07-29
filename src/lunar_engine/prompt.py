@@ -264,7 +264,15 @@ class CommandCompleter(Completer):
 
     def _generate_completions(self, context: CompletionContext) -> Iterator[Completion]:
         if not context.command:
-            yield from self._complete_root_commands(context.parsed.current_word)
+            # only show root commands if:
+            # 1. we have no command parts at all, OR
+            # 2. we have exactly 1 command part AND we're not at a space after it
+            if len(context.parsed.command_parts) == 0 or (
+                len(context.parsed.command_parts) == 1
+                and not context.parsed.ends_with_space
+            ):
+                yield from self._complete_root_commands(context.parsed.current_word)
+            # if not, show nothing for invalid command paths
             return
 
         if self._should_complete_subcommands(context):
@@ -417,7 +425,167 @@ class CommandCompleter(Completer):
     # ============================================================================
 
     def _get_fuzzy_ratio(self, s1: str, s2: str) -> float:
-        return SequenceMatcher(None, s1.lower(), s2.lower()).ratio()
+        if not s1:
+            return 1.0
+
+        s1_lower = s1.lower()
+        s2_lower = s2.lower()
+
+        # extract words from target using multiple delimiters
+        words = self._extract_words(s2_lower)
+        word_starts = [word[0] for word in words if word]
+
+        # 1. EXACT PREFIX MATCH
+        if s2_lower.startswith(s1_lower):
+            return 1.0
+
+        # 2. WORD-BOUNDARY PREFIX MATCH
+        for word in words:
+            if word.startswith(s1_lower):
+                return 0.95
+
+        # 3. MULTI-WORD INITIALS MATCH
+        initials = "".join(word_starts)
+        if len(s1_lower) > 1 and initials.startswith(s1_lower):
+            return 0.9
+
+        # 4. SMART ABBREVIATION MATCHING
+        abbrev_score = self._match_abbreviation(s1_lower, words)
+        if abbrev_score > 0:
+            return abbrev_score
+
+        # 5. FUZZY WORD MATCHING
+        fuzzy_score = self._fuzzy_word_match(s1_lower, words)
+        if fuzzy_score > 0:
+            return fuzzy_score
+
+        # 6. SUBSTRING MATCH (anywhere in target)
+        if s1_lower in s2_lower:
+            # score based on position - earlier is better
+            pos = s2_lower.index(s1_lower)
+            position_score = 1.0 - (pos / len(s2_lower)) * 0.3
+            return max(0.6, position_score)
+
+        # 7. CHARACTER SEQUENCE FUZZY MATCH
+        return self._character_sequence_match(s1_lower, s2_lower)
+
+    def _extract_words(self, text: str) -> list[str]:
+        # extract words from text handling snake_case, camelCase, kebab-case, etc.
+        words: list[str] = []
+        current_word: list[str] = []
+
+        for char in text:
+            if char in {"_", "-", " "}:
+                if current_word:
+                    words.append("".join(current_word))
+                    current_word = []
+            elif char.isupper() and current_word and current_word[-1].islower():
+                words.append("".join(current_word))
+                current_word = [char]
+            else:
+                current_word.append(char)
+
+        if current_word:
+            words.append("".join(current_word))
+
+        return [word.lower() for word in words if word]
+
+    def _match_abbreviation(self, input_str: str, words: list[str]) -> float:
+        if len(input_str) < 3 or len(words) < 2:
+            return 0.0
+
+        # greedily match input against word prefixes
+        word_idx = 0
+        input_idx = 0
+        matched_chars = 0
+
+        while word_idx < len(words) and input_idx < len(input_str):
+            word = words[word_idx]
+            chars_matched_in_word = 0
+
+            # match as many characters as possible from current word
+            while (
+                input_idx < len(input_str)
+                and chars_matched_in_word < len(word)
+                and input_str[input_idx] == word[chars_matched_in_word]
+            ):
+                input_idx += 1
+                chars_matched_in_word += 1
+                matched_chars += 1
+
+            # move to next word if we matched at least one character
+            if chars_matched_in_word > 0:
+                word_idx += 1
+            else:
+                break
+
+        # score based on how much we matched
+        if matched_chars == len(input_str):
+            coverage = matched_chars / sum(len(w) for w in words)
+            return 0.8 + coverage * 0.1  # 0.8-0.9 range
+
+        return 0.0
+
+    def _fuzzy_word_match(self, input_str: str, words: list[str]) -> float:
+        if not words:
+            return 0.0
+
+        best_score = 0.0
+
+        # fuzzy match against each word individually
+        for word in words:
+            if len(input_str) <= len(word):
+                word_score = self._single_word_fuzzy(input_str, word)
+                best_score = max(best_score, word_score)
+
+        # fuzzy match across multiple words
+        combined = "".join(words)
+        if len(input_str) <= len(combined):
+            combined_score = self._single_word_fuzzy(input_str, combined) * 0.9
+            best_score = max(best_score, combined_score)
+
+        return best_score
+
+    def _single_word_fuzzy(self, input_str: str, word: str) -> float:
+        if not input_str or not word:
+            return 0.0
+
+        # simple fuzzy matching - characters in order with gaps allowed
+        input_idx = 0
+        word_idx = 0
+        matches = 0
+
+        while input_idx < len(input_str) and word_idx < len(word):
+            if input_str[input_idx] == word[word_idx]:
+                matches += 1
+                input_idx += 1
+            word_idx += 1
+
+        if matches == len(input_str):
+            # all input characters found in order
+            density = matches / len(word)  # how dense the match is
+            completeness = matches / len(input_str)  # should be 1.0
+            return min(0.75, 0.5 + density * 0.25) * completeness
+
+        return 0.0
+
+    def _character_sequence_match(self, input_str: str, target: str) -> float:
+        matches = 0
+        target_idx = 0
+
+        for char in input_str:
+            while target_idx < len(target) and target[target_idx] != char:
+                target_idx += 1
+            if target_idx < len(target):
+                matches += 1
+                target_idx += 1
+
+        if matches == len(input_str):
+            # all characters found in sequence
+            return max(0.3, matches / len(target))
+
+        # send partial match to SequenceMatcher for consistency
+        return SequenceMatcher(None, input_str, target).ratio() * 0.5
 
     def _matches_fuzzy(self, input_word: str, target: str) -> bool:
         if not input_word:
