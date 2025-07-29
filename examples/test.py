@@ -1,5 +1,5 @@
 from lunar_engine.prompt import CommandCompleter, Prompt
-from lunar_engine.command import CommandRegistry
+from lunar_engine.command import get_registry, command
 from lunar_engine.exceptions import InterruptException
 from prompt_toolkit.completion import FuzzyWordCompleter
 from typing import Literal
@@ -42,30 +42,29 @@ except RuntimeError:
 
 assert not prompt
 
-
-registry: CommandRegistry = CommandRegistry()
+registry = get_registry()
 
 
 # Define some example commands
-@registry.command()
+@command()
 def hello(name: str) -> str:
     """Say hello to someone."""
     return f"hello {name}"
 
 
-@registry.command()
+@command()
 def add(*nums: float | int) -> str:
     """Add numbers together."""
     return str(sum(nums))
 
 
-@registry.command()
+@command()
 def add_three_nums(a: float, b: float, c: float) -> str:
     """Add three numbers together."""
     return str(a + b + c)
 
 
-@registry.command()
+@command()
 def help() -> str:
     """Show available commands and their descriptions."""
     lines: list[str] = []
@@ -75,43 +74,43 @@ def help() -> str:
     return "\n".join(lines)
 
 
-@registry.command()
+@command()
 def exit() -> None:
     """Exit the CLI."""
     raise InterruptException
 
 
-@registry.command()
+@command()
 def test(a: int, b: str | None = None, c: int = 0) -> str:
     """Test command."""
     return f"{a=} {b=} {c=}"
 
 
-@registry.command()
+@command()
 def git():
     """Git version control"""
     pass
 
 
-@registry.command(parent=git)
+@command(parent=git)
 def commit(message: str) -> str:
     """Record changes to the repository"""
     return f"committing {message}"
 
 
-@registry.command(parent=git)
+@command(parent=git)
 def push(remote: str = "origin", branch: str = "master") -> str:
     """Update remote refs along with associated objects"""
     return f"pushing {remote} {branch}"
 
 
-@registry.command(parent=git)
+@command(parent=git)
 def checkout(branch: str) -> str:
     """Switch branches or restore working tree files"""
     return f"checking out {branch}"
 
 
-@registry.command()
+@command()
 def test_literal(
     a: Literal["a", "b", "c"],
     b: Literal[True, False, None, 1, 2, 3, "a", "b", "c"],
@@ -120,7 +119,7 @@ def test_literal(
     return f"test literal {a} {b}"
 
 
-@registry.command()
+@command()
 def test_infer(
     a: Literal["a", "b", "c"] | None,
     b: str | None,

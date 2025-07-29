@@ -177,3 +177,14 @@ class CommandRegistry:
             return func
 
         return decorator
+
+
+_global_registry = CommandRegistry()
+command = _global_registry.command
+
+
+def get_registry() -> CommandRegistry:
+    """
+    Get the global command registry.
+    """
+    return _global_registry

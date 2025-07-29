@@ -1,7 +1,7 @@
 from typing import Self
 import sys
 from lunar_engine.prompt import Prompt
-from lunar_engine.command import CommandRegistry
+from lunar_engine.command import CommandRegistry, get_registry
 from lunar_engine.exceptions import InterruptException
 
 
@@ -22,14 +22,14 @@ class Shell:
     _registry: CommandRegistry
     _instance: bool = False
 
-    def __new__(cls, registry: CommandRegistry) -> Self:
+    def __new__(cls, registry: CommandRegistry | None = None) -> Self:
         if cls._instance:
             raise RuntimeError(f"{repr(cls)} cannot be instantiated more than once")
         cls._instance = True
         return super(Shell, cls).__new__(cls)
 
-    def __init__(self, registry: CommandRegistry) -> None:
-        self._registry = registry
+    def __init__(self, registry: CommandRegistry | None = None) -> None:
+        self._registry = registry or get_registry()
 
     @classmethod
     def _enter_alt_buffer(cls) -> None:

@@ -12,7 +12,7 @@ from prompt_toolkit.clipboard import Clipboard, InMemoryClipboard
 from prompt_toolkit.document import Document
 from prompt_toolkit.completion import CompleteEvent
 from .exceptions import InterruptException
-from .command import CommandRegistry, CommandInfo
+from .command import CommandRegistry, CommandInfo, get_registry
 import inspect
 
 
@@ -153,11 +153,11 @@ class CommandCompleter(Completer):
 
     def __init__(
         self,
-        registry: CommandRegistry,
+        registry: CommandRegistry | None = None,
         min_match_score: float = 0.3,
         strict_positional: bool = True,
     ) -> None:
-        self._registry = registry
+        self._registry = registry or get_registry()
         self._min_match_score = min_match_score
         self._strict_positional = strict_positional
 
