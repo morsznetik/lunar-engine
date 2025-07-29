@@ -1,9 +1,11 @@
 from typing import override
-from lunar_engine.command import command
+from lunar_engine.command import CommandRegistry
 from lunar_engine.shell import Shell
 from lunar_engine.prompt import Prompt, CommandCompleter
 
-p = Prompt("$ ", completer=CommandCompleter())
+registry: CommandRegistry = CommandRegistry()
+
+prompt = Prompt("$ ", completer=CommandCompleter(registry))
 
 
 class MyShell(Shell):
@@ -20,11 +22,13 @@ class MyShell(Shell):
         print(f"An error occurred! {e}")
 
 
-@command(description="A command.")
-def test():
+@registry.command(description="A command.")
+def test(should_fail: str):
     print("You ran this command!")
+    if should_fail == "yes":
+        raise Exception(f"{should_fail=}")
 
 
-shell = MyShell()
+shell = MyShell(registry)
 
-shell.run(p, start_text="Hi there!")
+shell.run(prompt, start_text="Hi there!")

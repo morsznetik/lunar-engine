@@ -1,8 +1,9 @@
 from lunar_engine.prompt import CommandCompleter, Prompt
-from lunar_engine.command import command, get_registry, CommandRegistry
+from lunar_engine.command import CommandRegistry
 from lunar_engine.exceptions import InterruptException
 from prompt_toolkit.completion import FuzzyWordCompleter
 from typing import Literal
+
 
 prompt = Prompt(
     "> ",
@@ -42,29 +43,31 @@ except RuntimeError:
 assert not prompt
 
 
+registry: CommandRegistry = CommandRegistry()
+
+
 # Define some example commands
-@command()
+@registry.command()
 def hello(name: str) -> str:
     """Say hello to someone."""
     return f"hello {name}"
 
 
-@command()
+@registry.command()
 def add(*nums: float | int) -> str:
     """Add numbers together."""
     return str(sum(nums))
 
 
-@command()
+@registry.command()
 def add_three_nums(a: float, b: float, c: float) -> str:
     """Add three numbers together."""
     return str(a + b + c)
 
 
-@command()
+@registry.command()
 def help() -> str:
     """Show available commands and their descriptions."""
-    registry = get_registry()
     lines: list[str] = []
     for cmd in registry:
         desc = cmd.description or "No description"
@@ -72,43 +75,43 @@ def help() -> str:
     return "\n".join(lines)
 
 
-@command()
+@registry.command()
 def exit() -> None:
     """Exit the CLI."""
     raise InterruptException
 
 
-@command()
+@registry.command()
 def test(a: int, b: str | None = None, c: int = 0) -> str:
     """Test command."""
     return f"{a=} {b=} {c=}"
 
 
-@command()
+@registry.command()
 def git():
     """Git version control"""
     pass
 
 
-@command(parent=git)
+@registry.command(parent=git)
 def commit(message: str) -> str:
     """Record changes to the repository"""
     return f"committing {message}"
 
 
-@command(parent=git)
+@registry.command(parent=git)
 def push(remote: str = "origin", branch: str = "master") -> str:
     """Update remote refs along with associated objects"""
     return f"pushing {remote} {branch}"
 
 
-@command(parent=git)
+@registry.command(parent=git)
 def checkout(branch: str) -> str:
     """Switch branches or restore working tree files"""
     return f"checking out {branch}"
 
 
-@command()
+@registry.command()
 def test_literal(
     a: Literal["a", "b", "c"],
     b: Literal[True, False, None, 1, 2, 3, "a", "b", "c"],
@@ -117,7 +120,7 @@ def test_literal(
     return f"test literal {a} {b}"
 
 
-@command()
+@registry.command()
 def test_infer(
     a: Literal["a", "b", "c"] | None,
     b: str | None,
@@ -125,24 +128,20 @@ def test_infer(
     return f"{a=} {b=}"
 
 
-registry = get_registry()
-
 # Create a CLI prompt with command completion
 prompt2 = Prompt(
     "> ",
     rprompt="Welcome to Lunar CLI!",
-    completer=CommandCompleter(),
+    completer=CommandCompleter(registry),
 )
 
 del registry["1"]
 
-a = CommandRegistry()
-
 for cmd in registry:
     print(cmd.name)
 
-for cmd in a:
-    print(cmd.name)
+
+# Shell example implementation
 
 with prompt2:
     try:

@@ -1,29 +1,35 @@
 from typing import Self
 import sys
 from lunar_engine.prompt import Prompt
-from lunar_engine.command import get_registry
+from lunar_engine.command import CommandRegistry
 from lunar_engine.exceptions import InterruptException
 
 
 class Shell:
     """
-    Shell is a helper for running a Prompt loop. It parses user input for registered commands and their arguments and runs them.
+    Shell runs a prompt loop with the specified Prompt and parses user input for registered commands and their arguments.
+    It then executes them and prints the result, if any.
 
     Basic usage:
-        >>> prompt = Prompt("> ")
-        >>> shell = Shell()
+        >>> registry = CommandRegistry()
+        >>> prompt = Prompt("> ", completer=CommandCompleter(registry))
+        >>> shell = Shell(registry)
         >>> shell.run(prompt)
 
     It may be subclassed to override some methods, but should only be instantiated once.
     """
 
+    _registry: CommandRegistry
     _instance: bool = False
 
-    def __new__(cls) -> Self:
+    def __new__(cls, registry: CommandRegistry) -> Self:
         if cls._instance:
-            raise RuntimeError(f"{repr(Shell)} cannot be instantiated more than once")
+            raise RuntimeError(f"{repr(cls)} cannot be instantiated more than once")
         cls._instance = True
         return super(Shell, cls).__new__(cls)
+
+    def __init__(self, registry: CommandRegistry) -> None:
+        self._registry = registry
 
     @classmethod
     def _enter_alt_buffer(cls) -> None:
@@ -66,7 +72,6 @@ class Shell:
             start_text: Optional text to print at the beginning
             use_alt_buffer: Whether to use the terminal's alternative screen buffer
         """
-        registry = get_registry()
 
         if use_alt_buffer:
             self._enter_alt_buffer()
@@ -84,7 +89,7 @@ class Shell:
                                 continue  # No input provided
 
                             # Traverse command tree to find the correct command
-                            cmd_info = registry[parts[0]]
+                            cmd_info = self._registry[parts[0]]
                             if not cmd_info:
                                 self.on_unknown_command(parts[0])
                                 continue

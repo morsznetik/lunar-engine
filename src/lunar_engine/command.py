@@ -50,12 +50,7 @@ class CommandRegistry:
     """Registry for storing and managing commands in a tree."""
 
     def __init__(self) -> None:
-        # all instances share the same _commands for now
-        # *support multiple registries in the future
-        if not hasattr(CommandRegistry, "_commands"):
-            CommandRegistry._commands: dict[str, CommandInfo] = {}
-
-        self._commands = CommandRegistry._commands
+        self._commands: dict[str, CommandInfo] = {}
 
     def __iter__(self) -> Iterator[CommandInfo]:
         return iter(self._commands.values())
@@ -137,59 +132,48 @@ class CommandRegistry:
             self._commands[cmd_name] = cmd_info
         return cmd_info
 
+    def command[T: CommandFunc](
+        self,
+        name: str | None = None,
+        *,
+        description: str | None = None,
+        parent: CommandFunc | None = None,
+        register: bool = True,
+    ) -> Callable[[T], T]:
+        """
+        Decorator for registering command functions.
 
-# global registry instance
-# *support multiple registries in the future
-_registry = CommandRegistry()
+        Args:
+            name: Optional override for the command name
+            description: Optional command description
+            parent: Optional parent command function for subcommands
+            register: Whether to register immediately or wait for manual registration
 
+        Basic usage:
+            >>> @command()
+            ... def echo(string: str) -> str:
+            ...     '''Echo the input string.'''
+            ...     return string
 
-def command[T: CommandFunc](
-    name: str | None = None,
-    *,
-    description: str | None = None,
-    parent: CommandFunc | None = None,
-    register: bool = True,
-) -> Callable[[T], T]:
-    """
-    Decorator for registering command functions.
+            >>> @command()
+            ... def calc():
+            ...     '''A calculator command'''
+            ...     pass
 
-    Args:
-        name: Optional override for the command name
-        description: Optional command description
-        parent: Optional parent command function for subcommands
-        register: Whether to register immediately or wait for manual registration
+            >>> @command(parent=calc)
+            ... def add_command(*nums: int | float) -> str:
+            ...     return str(sum(nums))
+        """
 
-    Basic usage:
-        >>> @command()
-        ... def echo(string: str) -> str:
-        ...     '''Echo the input string.'''
-        ...     return string
+        def decorator(func: T) -> T:
+            if register:
+                parent_name = parent.__name__ if parent else None
+                self.register(
+                    func,
+                    name=name,
+                    description=description,
+                    parent=parent_name,
+                )
+            return func
 
-        >>> @command()
-        ... def calc():
-        ...     '''A calculator command'''
-        ...     pass
-
-        >>> @command(parent=calc)
-        ... def add_command(*nums: int | float) -> str:
-        ...     return str(sum(nums))
-    """
-
-    def decorator(func: T) -> T:
-        if register:
-            parent_name = parent.__name__ if parent else None
-            _registry.register(
-                func,
-                name=name,
-                description=description,
-                parent=parent_name,
-            )
-        return func
-
-    return decorator
-
-
-def get_registry() -> CommandRegistry:
-    # get the global command registry instance
-    # *support multiple registries in the future
-    return _registry
+        return decorator

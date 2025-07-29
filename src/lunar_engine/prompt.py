@@ -12,7 +12,7 @@ from prompt_toolkit.clipboard import Clipboard, InMemoryClipboard
 from prompt_toolkit.document import Document
 from prompt_toolkit.completion import CompleteEvent
 from .exceptions import InterruptException
-from .command import get_registry, CommandRegistry, CommandInfo
+from .command import CommandRegistry, CommandInfo
 import inspect
 
 
@@ -21,7 +21,8 @@ class Prompt:
     Prompt for Lunar Engine. Throws InterruptException on KeyboardInterrupt and EOFError.
 
     Basic usage:
-        >>> with Prompt('> ') as p:
+        >>> registry = CommandRegistry()
+        >>> with Prompt('> ', completer=CommandCompleter(registry)) as p:
         ...     for user_input in p:
         ...         print(user_input)
         >>> assert not p
@@ -31,7 +32,7 @@ class Prompt:
 
     _prompt: str
     _rprompt: str | None
-    _completer: Final[Completer | None]
+    _completer: Final[Completer]
     _auto_suggest: Final[AutoSuggest | None]
     _history: Final[History | None]
     _clipboard: Final[Clipboard | None]
@@ -46,7 +47,7 @@ class Prompt:
         /,
         *,
         rprompt: str | None = None,
-        completer: Completer | None = None,
+        completer: Completer,
         auto_suggest: AutoSuggest | None = None,
         history: History | None = None,
         clipboard: Clipboard | None = None,
@@ -55,7 +56,7 @@ class Prompt:
     ) -> None:
         self._prompt = prompt
         self._rprompt = rprompt
-        self._completer = completer or CommandCompleter()
+        self._completer = completer
         self._history = history or InMemoryHistory()
         self._clipboard = clipboard or InMemoryClipboard()
         self._style = style
@@ -152,10 +153,11 @@ class CommandCompleter(Completer):
 
     def __init__(
         self,
+        registry: CommandRegistry,
         min_match_score: float = 0.3,
         strict_positional: bool = True,
     ) -> None:
-        self._registry = get_registry()
+        self._registry = registry
         self._min_match_score = min_match_score
         self._strict_positional = strict_positional
 
