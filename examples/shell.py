@@ -27,4 +27,4 @@ def test():
 
 shell = MyShell()
 
-shell.run(p, start_text="Hi there!", end_text="Goodbye!")
+shell.run(p, start_text="Hi there!")
