@@ -284,6 +284,7 @@ class CommandCompleter(Completer):
             return None
 
         # build display metadata
+        # ignore default type because the type checker cannot infer it statically
         default = param.default  # pyright: ignore[reportAny]
         type_str = self._format_parameter_type(param)
         if default != inspect.Parameter.empty:
