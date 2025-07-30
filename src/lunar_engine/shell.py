@@ -1,4 +1,4 @@
-from typing import Self, Callable
+from typing import NoReturn, Self, Callable
 from enum import Enum, auto
 import sys
 from lunar_engine.prompt import CommandCompleter, Prompt
@@ -109,6 +109,8 @@ class Shell:
         cls,
         registry: CommandRegistry | None = None,
         handlers: HandlerRegistry | None = None,
+        *,
+        builtins: bool = True,
     ) -> Self:
         if cls._instance:
             raise RuntimeError(f"{type(cls)} cannot be instantiated more than once")
@@ -119,11 +121,50 @@ class Shell:
         self,
         registry: CommandRegistry | None = None,
         handlers: HandlerRegistry | None = None,
+        *,
+        builtins: bool = True,
     ) -> None:
         self._registry = registry or get_registry()
         # TODO: pls figure out a way to not use globals name wrangling
         self._handlers = handlers or globals()["handlers"]
         self._prompt = None
+        self._register_builtin_commands()
+
+    def _register_builtin_commands(self) -> None:
+        """Register the built-in exit and help commands."""
+        self._registry.register(self._exit_command, name="exit")
+        self._registry.register(self._help_command, name="help")
+
+    def _exit_command(self) -> NoReturn:
+        """Exit the shell."""
+        raise InterruptException()
+
+    def _help_command(self, command_name: str | None = None) -> None:
+        """Show help for commands."""
+        if command_name is None:
+            print("Available commands:")
+            for cmd_info in self._registry:
+                if cmd_info.parent is None:  # show top-level commands
+                    desc = f" - {cmd_info.description}" if cmd_info.description else ""
+                    print(f"  {cmd_info.name}{desc}")
+        else:
+            cmd_info = self._registry[command_name]
+            if cmd_info is None:
+                print(f"Unknown command: {command_name}")
+                return
+
+            print(f"Help for '{command_name}':")
+            if cmd_info.description:
+                print(f"  {cmd_info.description}")
+
+            # show subcommands if any
+            if cmd_info.children:
+                print("  Subcommands:")
+                for child_name, child_info in cmd_info.children.items():
+                    desc = (
+                        f" - {child_info.description}" if child_info.description else ""
+                    )
+                    print(f"    {child_name}{desc}")
 
     @property
     def registry(self) -> CommandRegistry:
