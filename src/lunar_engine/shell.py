@@ -131,7 +131,6 @@ class Shell:
         self._register_builtin_commands()
 
     def _register_builtin_commands(self) -> None:
-        """Register the built-in exit and help commands."""
         self._registry.register(self._exit_command, name="exit")
         self._registry.register(self._help_command, name="help")
 
