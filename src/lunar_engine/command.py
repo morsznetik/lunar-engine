@@ -2,10 +2,38 @@ import inspect
 import weakref
 from collections.abc import Iterator, Callable
 from dataclasses import dataclass, field
-from typing import Final, Self, get_type_hints
-from lunar_engine.exceptions import UntypedCommandException
+from typing import Any, Final, get_type_hints, Self, get_origin, get_args
+from types import NoneType
+from lunar_engine.exceptions import (
+    UntypedCommandException,
+    InvalidArgumentTypeException,
+)
 
 type CommandFunc = Callable[..., None]
+
+_allowed_types = {int, float, str, bool, bytes, list, NoneType}
+
+
+# ignore reportAny because we cannot infer the type of the args
+def _is_simple_builtin_type(type_hint: Any) -> bool:  # pyright: ignore[reportAny]
+    if type_hint in _allowed_types:
+        return True
+
+    origin = get_origin(type_hint)  # pyright: ignore[reportAny]
+    if origin in _allowed_types:
+        args = get_args(type_hint)
+        if args:
+            return all(_is_simple_builtin_type(arg) for arg in args)  # pyright: ignore[reportAny]
+        return True
+
+    # handle unions
+    if hasattr(type_hint, "__or__"):  # pyright: ignore[reportAny]
+        args = get_args(type_hint)
+        if args:
+            return all(_is_simple_builtin_type(arg) for arg in args)  # pyright: ignore[reportAny]
+        return True
+
+    return False
 
 
 @dataclass
@@ -43,6 +71,21 @@ class CommandInfo:
                 if name not in hints:
                     raise UntypedCommandException(
                         f"Command {self.name!r}: parameter {name!r} must have a type hint"
+                    )
+                type_hint = hints[name]  # pyright: ignore[reportAny]
+                if not _is_simple_builtin_type(type_hint):
+                    raise InvalidArgumentTypeException(
+                        f"Command {self.name!r}: parameter {name!r} has type {type_hint}, "
+                        + f"but only simple builtin types are allowed: {', '.join(t.__name__ for t in _allowed_types)}"
+                    )
+
+            # also check *args type
+            elif param.kind == param.VAR_POSITIONAL:
+                type_hint = hints[name]  # pyright: ignore[reportAny]
+                if not _is_simple_builtin_type(type_hint):
+                    raise InvalidArgumentTypeException(
+                        f"Command {self.name!r}: *args parameter {name!r} has type {type_hint}, "
+                        + f"but only simple builtin types are allowed"
                     )
 
 

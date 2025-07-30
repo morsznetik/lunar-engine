@@ -39,3 +39,11 @@ class UntypedCommandException(CommandException):
     """
 
     pass
+
+
+class InvalidArgumentTypeException(CommandException):
+    """
+    Raised when a command has an invalid argument type.
+    """
+
+    pass
