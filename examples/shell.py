@@ -23,13 +23,14 @@ def on_unknown_command(name: str) -> None:
 
 
 @registry.command(description="A command.")
-def test(should_fail: str):
+def test(should_fail: bool) -> None:
     print("You ran this command!")
-    if should_fail == "yes":
+    if should_fail:
         raise Exception(f"{should_fail=}")
 
 
 shell = Shell(registry)
+
 
 shell.run(prompt, start_text="Hi there!")
 
