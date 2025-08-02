@@ -1,11 +1,21 @@
-from typing import NoReturn, Self, Callable
+from itertools import zip_longest
+from types import NoneType, UnionType
+from typing import (
+    Any,
+    NoReturn,
+    Self,
+    Callable,
+    get_args,
+    get_origin,
+    get_type_hints,
+)
 from enum import Enum, auto
 import sys
 from lunar_engine.prompt import CommandCompleter, Prompt
 from lunar_engine.command import CommandRegistry, get_registry
 from lunar_engine.exceptions import InterruptException
 
-type UnknownHandler = Callable[[str], None]
+type UnknownCommandHandler = Callable[[str], None]
 type InterruptHandler = Callable[[], None]
 type ErrorHandler = Callable[[Exception], None]
 type Handler = Callable[..., None]
@@ -45,11 +55,13 @@ class HandlerRegistry:
         return self._handlers[event]
 
     def on_unknown_command(
-        self, func: UnknownHandler | None = None
-    ) -> UnknownHandler | Callable[[UnknownHandler], UnknownHandler]:
+        self, func: UnknownCommandHandler | None = None
+    ) -> (
+        UnknownCommandHandler | Callable[[UnknownCommandHandler], UnknownCommandHandler]
+    ):
         """Decorator for unknown command event."""
 
-        def decorator(f: UnknownHandler) -> UnknownHandler:
+        def decorator(f: UnknownCommandHandler) -> UnknownCommandHandler:
             self._handlers[Event.UNKNOWN_COMMAND] = f
             return f
 
@@ -113,7 +125,7 @@ class Shell:
         builtins: bool = True,
     ) -> Self:
         if cls._instance:
-            raise RuntimeError(f"{type(cls)} cannot be instantiated more than once")
+            raise RuntimeError(f"{cls} cannot be instantiated more than once")
         cls._instance = True
         return super(Shell, cls).__new__(cls)
 
@@ -128,7 +140,9 @@ class Shell:
         # TODO: pls figure out a way to not use globals name wrangling
         self._handlers = handlers or globals()["handlers"]
         self._prompt = None
-        self._register_builtin_commands()
+
+        if builtins:
+            self._register_builtin_commands()
 
     def _register_builtin_commands(self) -> None:
         self._registry.register(self._exit_command, name="exit")
@@ -253,8 +267,14 @@ class Shell:
 
                             args = parts[args_start_index:]
 
+                            types = get_type_hints(cmd_info.func)
+                            transformed_args = _transform_types(
+                                [v for k, v in types.items() if k != "return"],  # pyright: ignore[reportAny] - required because of runtime type checking
+                                args,
+                            )
+
                             # Execute command
-                            cmd_info.func(*args)
+                            cmd_info.func(*transformed_args)
 
                         except InterruptException:
                             self._handlers[Event.INTERRUPT]()
@@ -270,3 +290,45 @@ class Shell:
         finally:
             if use_alt_buffer:
                 self._leave_alt_buffer()
+
+
+type TransformedArgs = (
+    int | float | str | bool | bytes | list[TransformedArgs] | NoneType
+)
+
+
+def _transform_types(types: list[Any], args: list[str]) -> list[TransformedArgs]:
+    transformed_args: list[TransformedArgs] = []
+
+    # ignore required because runtime type checking is necessary here
+    for arg_type, arg in zip_longest(types, args, fillvalue=None):
+        if arg == "none" or arg is None:
+            if get_origin(arg_type) is UnionType:
+                if NoneType in get_args(arg_type):
+                    transformed_args.append(None)
+                    continue
+            raise ValueError(f"Expected value for required argument, got {arg}")
+
+        assert arg is not None
+        if arg_type is int:
+            transformed_args.append(int(arg))
+        elif arg_type is float:
+            transformed_args.append(float(arg))
+        elif arg_type is bytes:
+            num = int(arg)
+            transformed_args.append(bytes(num))
+        elif arg_type is bool:
+            if arg == "true" or arg == "false":
+                transformed_args.append(True if arg == "true" else False)
+            else:
+                raise ValueError(f'Expected "true" or "false" for type bool, got {arg}')
+        elif arg_type is list:
+            elements = arg.split(",")
+            transformed_elements = _transform_types(
+                [arg_type for _ in range(len(elements))], elements
+            )
+            transformed_args.append(transformed_elements)
+        else:
+            transformed_args.append(arg)
+
+    return transformed_args

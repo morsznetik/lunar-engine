@@ -7,7 +7,7 @@ from typing import get_type_hints
 
 @handlers.on_unknown_command
 def unknown_command(name: str) -> None:
-    print(f"Oops! {name} is not a command")
+    print(f"Oops! {name} is not a command.")
 
 
 @handlers.on_interrupt
@@ -21,7 +21,7 @@ shell = Shell()
 
 @my_handlers.on_unknown_command
 def my_unknown_command(name: str) -> None:
-    print(f"Hi from my handler! {name} is not a command tho btw")
+    print(f"This is a different handler! {name} is not a command.")
 
 
 @command()
