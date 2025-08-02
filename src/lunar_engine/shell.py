@@ -1,3 +1,4 @@
+from copy import deepcopy
 from typing import NoReturn, Self, Callable
 from enum import Enum, auto
 import sys
@@ -124,7 +125,7 @@ class Shell:
         *,
         builtins: bool = True,
     ) -> None:
-        self._registry = registry or get_registry()
+        self._registry = deepcopy(registry or get_registry())
         # TODO: pls figure out a way to not use globals name wrangling
         self._handlers = handlers or globals()["handlers"]
         self._prompt = None
