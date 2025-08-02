@@ -113,7 +113,7 @@ class Shell:
         builtins: bool = True,
     ) -> Self:
         if cls._instance:
-            raise RuntimeError(f"{type(cls)} cannot be instantiated more than once")
+            raise RuntimeError(f"{cls.__name__} cannot be instantiated more than once")
         cls._instance = True
         return super(Shell, cls).__new__(cls)
 
@@ -128,7 +128,8 @@ class Shell:
         # TODO: pls figure out a way to not use globals name wrangling
         self._handlers = handlers or globals()["handlers"]
         self._prompt = None
-        self._register_builtin_commands()
+        if builtins:
+            self._register_builtin_commands()
 
     def _register_builtin_commands(self) -> None:
         self._registry.register(self._exit_command, name="exit")
@@ -216,7 +217,7 @@ class Shell:
         """
         if not isinstance(prompt.completer, CommandCompleter):
             raise TypeError(
-                f"Prompt must have a completer of type CommandCompleter, got {type(prompt.completer)}"
+                f"Prompt must have a completer of type CommandCompleter, got {prompt.completer.__class__.__name__}"
             )
 
         self._prompt = prompt
