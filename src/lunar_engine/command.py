@@ -84,8 +84,8 @@ class CommandInfo:
                 type_hint = hints[name]  # pyright: ignore[reportAny]
                 if not _is_simple_builtin_type(type_hint):
                     raise InvalidArgumentTypeException(
-                        f"Command {self.name!r}: *args parameter {name!r} has type {type_hint}, "
-                        + f"but only simple builtin types are allowed"
+                        f"Command {self.name!r}: parameter {name!r} has type {type_hint}, "
+                        + f"but only simple builtin types are allowed: {', '.join(t.__name__ for t in _allowed_types)}"
                     )
 
 
