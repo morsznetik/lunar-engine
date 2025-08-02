@@ -1,30 +1,45 @@
+import inspect
+from lunar_engine.exceptions import InvalidArgumentTypeException
+import sys
+from enum import Enum, auto
+from inspect import Parameter
 from itertools import zip_longest
 from types import NoneType, UnionType
 from typing import (
     Any,
-    NoReturn,
-    Self,
     Callable,
+    NoReturn,
+    Literal,
+    Self,
     get_args,
     get_origin,
     get_type_hints,
 )
-from enum import Enum, auto
-import sys
-from lunar_engine.prompt import CommandCompleter, Prompt
-from lunar_engine.command import CommandRegistry, get_registry
-from lunar_engine.exceptions import InterruptException
+from .command import CommandRegistry, get_registry
+from .exceptions import InterruptException
+from .prompt import CommandCompleter, Prompt
+
 
 type UnknownCommandHandler = Callable[[str], None]
 type InterruptHandler = Callable[[], None]
 type ErrorHandler = Callable[[Exception], None]
+type TypeTransformErrorHandler = Callable[
+    [str, str, str | None, str, ValueError | None], None
+]
+type NotEnoughArgumentsHandler = Callable[[int], None]
 type Handler = Callable[..., None]
+
+type TransformedArgs = (
+    int | float | str | bool | bytes | list[TransformedArgs] | NoneType
+)
 
 
 class Event(Enum):
     UNKNOWN_COMMAND = auto()
     INTERRUPT = auto()
     COMMAND_ERROR = auto()
+    TYPE_TRANSFORM_ERROR = auto()
+    COMMAND_NOT_ENOUGH_ARGUMENTS = auto()
 
 
 def _default_unknown_command(name: str) -> None:
@@ -39,6 +54,25 @@ def _default_command_error(e: Exception) -> None:
     print(f"Error: {e}")
 
 
+def _default_type_transform_error(
+    arg_name: str,
+    action: str,
+    arg: str,
+    arg_type: str | None = None,
+    e: ValueError | None = None,
+) -> None:
+    msg = f'For argument "{arg_name}", {action} "{arg}"'
+    if arg_type is not None:
+        msg += f" as type {arg_type}"
+    if e:
+        msg += f"; error: {e}"
+    print(msg)
+
+
+def _default_command_not_enough_arguments(num_expected_args: int) -> None:
+    print(f"No arguments provided while expecting at least {num_expected_args}.")
+
+
 class HandlerRegistry:
     """Registry for event handlers using decorators."""
 
@@ -49,6 +83,8 @@ class HandlerRegistry:
             Event.UNKNOWN_COMMAND: _default_unknown_command,
             Event.INTERRUPT: _default_interrupt,
             Event.COMMAND_ERROR: _default_command_error,
+            Event.TYPE_TRANSFORM_ERROR: _default_type_transform_error,
+            Event.COMMAND_NOT_ENOUGH_ARGUMENTS: _default_command_not_enough_arguments,
         }
 
     def __getitem__(self, event: Event) -> Handler:
@@ -89,6 +125,38 @@ class HandlerRegistry:
 
         def decorator(f: ErrorHandler) -> ErrorHandler:
             self._handlers[Event.COMMAND_ERROR] = f
+            return f
+
+        if func is not None:
+            return decorator(func)
+        return decorator
+
+    def on_type_transform_error(
+        self, func: TypeTransformErrorHandler | None = None
+    ) -> (
+        TypeTransformErrorHandler
+        | Callable[[TypeTransformErrorHandler], TypeTransformErrorHandler]
+    ):
+        """Decorator for type transform error event."""
+
+        def decorator(f: TypeTransformErrorHandler) -> TypeTransformErrorHandler:
+            self._handlers[Event.TYPE_TRANSFORM_ERROR] = f
+            return f
+
+        if func is not None:
+            return decorator(func)
+        return decorator
+
+    def on_command_not_enough_arguments(
+        self, func: NotEnoughArgumentsHandler | None = None
+    ) -> (
+        NotEnoughArgumentsHandler
+        | Callable[[NotEnoughArgumentsHandler], NotEnoughArgumentsHandler]
+    ):
+        """Decorator for type transform error event."""
+
+        def decorator(f: NotEnoughArgumentsHandler) -> NotEnoughArgumentsHandler:
+            self._handlers[Event.COMMAND_NOT_ENOUGH_ARGUMENTS] = f
             return f
 
         if func is not None:
@@ -213,6 +281,177 @@ class Shell:
         sys.stdout.write("\033[?1049l")
         sys.stdout.flush()
 
+    def _transform_types(
+        self, types: list[Any], args: list[str], arg_names: list[str]
+    ) -> list[TransformedArgs]:
+        # for any ignore Anys in this function, it's because it should be Any
+        transformed_args: list[TransformedArgs] = []
+
+        for i, (arg_type, arg) in enumerate(zip_longest(types, args, fillvalue=None)):
+            if arg == "none" or arg is None:
+                origin = get_origin(arg_type)
+                if origin is UnionType:
+                    type_args = get_args(arg_type)
+                    assert type_args, f"Union type {arg_type} has no args"
+                    if type(None) in type_args:
+                        transformed_args.append(None)
+                        continue
+                # if None is not allowed in the union, this will fail below
+
+            assert arg is not None, (
+                f"Argument is None but type {arg_type} doesn't allow None"
+            )
+
+            # handle union types
+            origin = get_origin(arg_type)
+            if origin is UnionType:
+                type_args = get_args(arg_type)
+
+                # filter out NoneType since we handled None above
+                non_none_types = [t for t in type_args if t is not type(None)]  # pyright: ignore[reportAny]
+                assert non_none_types, (
+                    f"Union type {arg_type} only contains None"
+                )  # shouldn't happen?
+
+                transformed_value: TransformedArgs = None
+                last_exception: Exception | None = None
+
+                # bruteforce each type in the union until one works
+                for attempt_type in non_none_types:  # pyright: ignore[reportAny]
+                    try:
+                        transformed_value = self._transform_single_type(
+                            attempt_type, arg, arg_names[i], suppress_error=True
+                        )
+                        break
+                    except InvalidArgumentTypeException as e:
+                        # for some reason when you explicitly give the type for last_exception it freaks out
+                        last_exception = e
+                        continue
+
+                if transformed_value is None and last_exception:
+                    # crap, none of the union types worked
+                    type_names = " | ".join(t.__name__ for t in non_none_types)  # pyright: ignore[reportAny]
+                    self._handlers[Event.TYPE_TRANSFORM_ERROR](
+                        arg_names[i],
+                        "could not interpret",
+                        arg,
+                        type_names,
+                        None,
+                    )
+                    raise InvalidArgumentTypeException from last_exception
+
+                transformed_args.append(transformed_value)
+            else:
+                # simple single types
+                transformed_value = self._transform_single_type(
+                    arg_type, arg, arg_names[i]
+                )
+                transformed_args.append(transformed_value)
+
+        return transformed_args
+
+    def _transform_single_type(
+        self,
+        arg_type: Any,  # pyright: ignore[reportAny]
+        arg: str,
+        arg_name: str,
+        *,
+        suppress_error: bool = False,
+    ) -> TransformedArgs:
+        # for any ignore Anys in this function, it's because it should be Any, same as above
+
+        origin = get_origin(arg_type)  # pyright: ignore[reportAny]
+
+        # Literal types
+        if origin is Literal:
+            literal_values = get_args(arg_type)
+
+            # try to match the argument with literal values
+            # ignore Any since they can be any type and that is fine
+            for literal_value in literal_values:  # pyright: ignore[reportAny]
+                if str(literal_value) == arg:  # pyright: ignore[reportAny]
+                    return literal_value  # pyright: ignore[reportAny]
+                # also try case-insensitive comparison for string literals
+                if (
+                    isinstance(literal_value, str)
+                    and literal_value.lower() == arg.lower()
+                ):
+                    return literal_value
+
+            # no match
+            literal_options = ", ".join(f'"{v}"' for v in literal_values)  # pyright: ignore[reportAny]
+            if not suppress_error:
+                self._handlers[Event.TYPE_TRANSFORM_ERROR](
+                    arg_name, f"expected one of: {literal_options}", None, arg, None
+                )
+            raise InvalidArgumentTypeException
+
+        if arg_type is int:
+            try:
+                return int(arg)
+            except ValueError as e:
+                if not suppress_error:
+                    self._handlers[Event.TYPE_TRANSFORM_ERROR](
+                        arg_name, "could not interpret", arg_type.__name__, arg, e
+                    )
+                raise InvalidArgumentTypeException from e
+
+        elif arg_type is float:
+            try:
+                return float(arg)
+            except ValueError as e:
+                if not suppress_error:
+                    self._handlers[Event.TYPE_TRANSFORM_ERROR](
+                        arg_name, "could not interpret", arg_type.__name__, arg, e
+                    )
+                raise InvalidArgumentTypeException from e
+
+        elif arg_type is bytes:
+            try:
+                return bytes(arg, "utf-8")
+            except ValueError as e:
+                if not suppress_error:
+                    self._handlers[Event.TYPE_TRANSFORM_ERROR](
+                        arg_name, "could not interpret", arg_type.__name__, arg, e
+                    )
+                raise InvalidArgumentTypeException from e
+
+        elif arg_type is bool:
+            if arg.lower() not in ("true", "false"):
+                # fake bool() error
+                e = ValueError(f"Invalid boolean value: {arg}")
+                if not suppress_error:
+                    self._handlers[Event.TYPE_TRANSFORM_ERROR](
+                        arg_name,
+                        'expected literal "true" or "false"',
+                        arg_type.__name__,
+                        arg,
+                        e,
+                    )
+                raise InvalidArgumentTypeException from e
+            return arg.lower() == "true"
+
+        elif origin is list:
+            elements = arg.split(",") if arg else []
+            if not elements:
+                return []
+
+            type_args = get_args(arg_type)
+            list_item_type = type_args[0] if type_args else str
+
+            transformed_elements: list[TransformedArgs] = []
+            for element in elements:
+                element = element.strip()
+                transformed_element = self._transform_single_type(
+                    list_item_type, element, arg_name
+                )
+                transformed_elements.append(transformed_element)
+
+            return transformed_elements
+
+        else:
+            return arg
+
     def run(
         self,
         prompt: Prompt,
@@ -267,15 +506,51 @@ class Shell:
 
                             args = parts[args_start_index:]
 
-                            types = get_type_hints(cmd_info.func)
-                            transformed_args = _transform_types(
-                                [v for k, v in types.items() if k != "return"],  # pyright: ignore[reportAny] - required because of runtime type checking
-                                args,
-                            )
+                            func_signature = inspect.signature(cmd_info.func)
+                            type_hints = get_type_hints(cmd_info.func)
 
-                            # Execute command
-                            cmd_info.func(*transformed_args)
+                            try:
+                                # Filter out return type annotation
+                                param_types = {
+                                    k: v
+                                    for k, v in type_hints.items()  # pyright: ignore[reportAny]
+                                    if k != "return"
+                                }
 
+                                # Get parameter info for default handling
+                                params: list[Parameter] = list(
+                                    func_signature.parameters.values()
+                                )
+                                param_names = list(param_types.keys())
+                                param_type_list = list(param_types.values())
+
+                                # param_type_list already contains the correct types
+                                typed_param_list = param_type_list
+
+                                # Check for "none" arguments that should trigger defaults
+                                effective_args: list[Any] = []
+                                for i, arg in enumerate(args):
+                                    if arg == "none" and i < len(params):
+                                        param = params[i]
+                                        # If this parameter has a default, stop processing args here
+                                        if param.default != inspect.Parameter.empty:  # pyright: ignore[reportAny]
+                                            break
+                                    effective_args.append(arg)
+
+                                # Only transform the effective arguments
+                                if effective_args:
+                                    transformed_args = self._transform_types(
+                                        typed_param_list[: len(effective_args)],
+                                        effective_args,
+                                        arg_names=param_names[: len(effective_args)],
+                                    )
+                                else:
+                                    transformed_args = []
+
+                            except InvalidArgumentTypeException:
+                                pass
+                            else:
+                                cmd_info.func(*transformed_args)
                         except InterruptException:
                             self._handlers[Event.INTERRUPT]()
                             break
@@ -290,45 +565,3 @@ class Shell:
         finally:
             if use_alt_buffer:
                 self._leave_alt_buffer()
-
-
-type TransformedArgs = (
-    int | float | str | bool | bytes | list[TransformedArgs] | NoneType
-)
-
-
-def _transform_types(types: list[Any], args: list[str]) -> list[TransformedArgs]:
-    transformed_args: list[TransformedArgs] = []
-
-    # ignore required because runtime type checking is necessary here
-    for arg_type, arg in zip_longest(types, args, fillvalue=None):
-        if arg == "none" or arg is None:
-            if get_origin(arg_type) is UnionType:
-                if NoneType in get_args(arg_type):
-                    transformed_args.append(None)
-                    continue
-            raise ValueError(f"Expected value for required argument, got {arg}")
-
-        assert arg is not None
-        if arg_type is int:
-            transformed_args.append(int(arg))
-        elif arg_type is float:
-            transformed_args.append(float(arg))
-        elif arg_type is bytes:
-            num = int(arg)
-            transformed_args.append(bytes(num))
-        elif arg_type is bool:
-            if arg == "true" or arg == "false":
-                transformed_args.append(True if arg == "true" else False)
-            else:
-                raise ValueError(f'Expected "true" or "false" for type bool, got {arg}')
-        elif arg_type is list:
-            elements = arg.split(",")
-            transformed_elements = _transform_types(
-                [arg_type for _ in range(len(elements))], elements
-            )
-            transformed_args.append(transformed_elements)
-        else:
-            transformed_args.append(arg)
-
-    return transformed_args

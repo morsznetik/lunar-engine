@@ -2,7 +2,7 @@ import copy
 from lunar_engine.shell import handlers, Shell, HandlerRegistry
 from lunar_engine.prompt import Prompt
 from lunar_engine.command import command, get_registry
-from typing import get_type_hints
+from typing import Literal, get_type_hints
 
 
 @handlers.on_unknown_command
@@ -53,8 +53,12 @@ my_commands = copy.copy(get_registry())
 
 
 @my_commands.command()
-def secret(a: int, b: int) -> None:
-    print(f"{a} + {b} = {a + b}")
+def secret(
+    a: int | float, b: int | float, c: Literal["hello", 1, False] = "hello"
+) -> None:
+    assert isinstance(a, (int, float))
+    assert isinstance(b, (int, float))
+    print(f"{a} + {b} = {a + b}, {c}")
 
 
 def hello2(name: list[str]) -> None:
