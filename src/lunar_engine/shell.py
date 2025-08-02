@@ -55,18 +55,20 @@ def _default_command_error(e: Exception) -> None:
 
 
 def _default_type_transform_error(
-    arg_name: str,
-    action: str,
     arg: str,
+    arg_name: str,
     arg_type: str | None = None,
+    options: set[str] | None = None,
     e: ValueError | None = None,
 ) -> None:
-    msg = f'For argument "{arg_name}", {action} "{arg}"'
+    msg = f'For argument "{arg_name}", could not interpret "{arg}"'
     if arg_type is not None:
         msg += f" as type {arg_type}"
     if e:
         msg += f"; error: {e}"
     print(msg)
+    if options:
+        print(f"Expected one of: {', '.join(options)}")
 
 
 def _default_command_not_enough_arguments(num_expected_args: int) -> None:
@@ -332,11 +334,9 @@ class Shell:
                     # crap, none of the union types worked
                     type_names = " | ".join(t.__name__ for t in non_none_types)  # pyright: ignore[reportAny]
                     self._handlers[Event.TYPE_TRANSFORM_ERROR](
-                        arg_names[i],
-                        "could not interpret",
                         arg,
+                        arg_names[i],
                         type_names,
-                        None,
                     )
                     raise InvalidArgumentTypeException from last_exception
 
@@ -382,7 +382,10 @@ class Shell:
             literal_options = ", ".join(f'"{v}"' for v in literal_values)  # pyright: ignore[reportAny]
             if not suppress_error:
                 self._handlers[Event.TYPE_TRANSFORM_ERROR](
-                    arg_name, f"expected one of: {literal_options}", None, arg, None
+                    arg,
+                    arg_name,
+                    None,
+                    literal_options,
                 )
             raise InvalidArgumentTypeException
 
@@ -392,7 +395,11 @@ class Shell:
             except ValueError as e:
                 if not suppress_error:
                     self._handlers[Event.TYPE_TRANSFORM_ERROR](
-                        arg_name, "could not interpret", arg_type.__name__, arg, e
+                        arg,
+                        arg_name,
+                        arg_type.__name__,
+                        None,
+                        e,
                     )
                 raise InvalidArgumentTypeException from e
 
@@ -402,7 +409,11 @@ class Shell:
             except ValueError as e:
                 if not suppress_error:
                     self._handlers[Event.TYPE_TRANSFORM_ERROR](
-                        arg_name, "could not interpret", arg_type.__name__, arg, e
+                        arg,
+                        arg_name,
+                        arg_type.__name__,
+                        None,
+                        e,
                     )
                 raise InvalidArgumentTypeException from e
 
@@ -412,20 +423,24 @@ class Shell:
             except ValueError as e:
                 if not suppress_error:
                     self._handlers[Event.TYPE_TRANSFORM_ERROR](
-                        arg_name, "could not interpret", arg_type.__name__, arg, e
+                        arg,
+                        arg_name,
+                        arg_type.__name__,
+                        None,
+                        e,
                     )
                 raise InvalidArgumentTypeException from e
 
         elif arg_type is bool:
             if arg.lower() not in ("true", "false"):
                 # fake bool() error
-                e = ValueError(f"Invalid boolean value: {arg}")
+                e = ValueError(f"Invalid boolean literal: '{arg}'")
                 if not suppress_error:
                     self._handlers[Event.TYPE_TRANSFORM_ERROR](
-                        arg_name,
-                        'expected literal "true" or "false"',
-                        arg_type.__name__,
                         arg,
+                        arg_name,
+                        arg_type.__name__,
+                        {"true", "false"},
                         e,
                     )
                 raise InvalidArgumentTypeException from e
