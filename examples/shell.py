@@ -31,4 +31,8 @@ def test(should_fail: bool) -> None:
 
 shell = Shell(registry)
 
-shell.run(prompt, start_text="Hi there!", use_alt_buffer=False)
+
+shell.run(prompt, start_text="Hi there!")
+
+print(registry["help"])  # builtins should not appear
+

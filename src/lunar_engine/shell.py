@@ -1,6 +1,6 @@
 import inspect
-from lunar_engine.exceptions import InvalidArgumentTypeException
 import sys
+from copy import deepcopy
 from enum import Enum, auto
 from inspect import Parameter
 from itertools import zip_longest
@@ -16,7 +16,7 @@ from typing import (
     get_type_hints,
 )
 from .command import CommandRegistry, get_registry
-from .exceptions import InterruptException
+from .exceptions import InterruptException, InvalidArgumentTypeException
 from .prompt import CommandCompleter, Prompt
 
 
@@ -195,7 +195,8 @@ class Shell:
         builtins: bool = True,
     ) -> Self:
         if cls._instance:
-            raise RuntimeError(f"{cls} cannot be instantiated more than once")
+            raise RuntimeError(f"{cls.__name__} cannot be instantiated more than once")
+
         cls._instance = True
         return super(Shell, cls).__new__(cls)
 
@@ -206,7 +207,7 @@ class Shell:
         *,
         builtins: bool = True,
     ) -> None:
-        self._registry = registry or get_registry()
+        self._registry = deepcopy(registry or get_registry())
         # TODO: pls figure out a way to not use globals name wrangling
         self._handlers = handlers or globals()["handlers"]
         self._prompt = None
@@ -484,7 +485,7 @@ class Shell:
         """
         if not isinstance(prompt.completer, CommandCompleter):
             raise TypeError(
-                f"Prompt must have a completer of type CommandCompleter, got {type(prompt.completer)}"
+                f"Prompt must have a completer of type CommandCompleter, got {prompt.completer.__class__.__name__}"
             )
 
         self._prompt = prompt
