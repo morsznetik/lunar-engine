@@ -1,5 +1,6 @@
 {
   "recommendations": [
-    "anysphere.cursorpyright"
+    "anysphere.cursorpyright",
+    "charliermarsh.ruff"
   ]
 }
