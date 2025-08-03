@@ -131,6 +131,15 @@ class CommandRegistry:
 
         del self._commands[name]
 
+    def __deepcopy__(self, memo: dict[int, Self]) -> Self:
+        cls = self.__class__
+        result = cls.__new__(cls)
+        memo[id(self)] = result
+
+        result._commands = {name: cmd for name, cmd in self._commands.items()}
+
+        return result
+
     def keys(self) -> list[str]:
         # return a list of all registered command names
         return list(self._commands.keys())

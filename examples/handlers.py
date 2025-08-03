@@ -2,7 +2,7 @@ import copy
 from lunar_engine.shell import handlers, Shell, HandlerRegistry
 from lunar_engine.prompt import Prompt
 from lunar_engine.command import command, get_registry
-from typing import Literal, get_type_hints
+from typing import Literal
 
 
 @handlers.on_unknown_command
@@ -45,11 +45,16 @@ def switch_handler() -> None:
 
 @command()
 def switch_to_secret_mode() -> None:
-    shell.registry = my_commands
+    if shell.registry is not my_commands:
+        shell.registry = my_commands
+    else:
+        shell.registry = get_registry()
     print("Commands switched")
+    print(shell.registry)
+    print(shell.registry.keys())
 
 
-my_commands = copy.copy(get_registry())
+my_commands = copy.deepcopy(get_registry())
 
 
 @my_commands.command()
@@ -61,11 +66,10 @@ def secret(
     print(f"{a} + {b} = {a + b}, {c}")
 
 
+@my_commands.command()
 def hello2(name: list[str]) -> None:
     print(f"Hello, {name}!")
 
-
-print(get_type_hints(hello2))
 
 shell.run(
     Prompt(
