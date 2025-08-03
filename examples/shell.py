@@ -1,3 +1,4 @@
+from lunar_engine.utils import FgColors, TextEffects
 from lunar_engine.command import CommandRegistry
 from lunar_engine.shell import Shell, handlers
 from lunar_engine.prompt import Prompt, CommandCompleter
@@ -9,7 +10,7 @@ prompt = Prompt("$ ", completer=CommandCompleter(registry))
 
 @handlers.on_command_error
 def on_command_error(e: Exception) -> None:
-    print(f"---ERROR: {e}---")
+    print(f"{FgColors.Red}---ERROR: {e}---{TextEffects.Reset}")
 
 
 @handlers.on_interrupt
