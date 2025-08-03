@@ -239,7 +239,7 @@ class Shell:
 
     @registry.setter
     def registry(self, registry: CommandRegistry) -> None:
-        """Set the command registry."""
+        """Set the command registry of the shell and the prompt's completer."""
         self._registry = registry
         # ensure the prompt completer's registry matches the Shell's to prevent faulty completions
         if self._prompt is not None and isinstance(
@@ -631,7 +631,6 @@ class Shell:
             )
 
         self._prompt = prompt
-        prompt.completer.registry = self._registry
 
         if use_alt_buffer:
             self._enter_alt_buffer()
