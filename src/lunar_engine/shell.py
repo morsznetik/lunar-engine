@@ -178,6 +178,12 @@ class Shell:
         >>> shell = Shell()
         >>> shell.run(prompt)
 
+    CLI usage (automatic detection):
+        >>> # uv run app.py adder 1 + 1
+        >>> # uv run app.py --help
+        >>> # uv run app.py -h
+        >>> # uv run app.py help adder
+
     The prompt passed to shell must have a completer of type CommandCompleter. Shell should only be instantiated once.
     """
 
@@ -186,12 +192,18 @@ class Shell:
     _prompt: Prompt | None
     _instance: bool = False
 
+    # cli args
+    _cli_use_alt_buffer: bool | None = None
+    _cli_use_alt_buffer_flag: bool
+
     def __new__(
         cls,
         registry: CommandRegistry | None = None,
         handlers: HandlerRegistry | None = None,
         *,
         builtins: bool = True,
+        enable_cli: bool = True,
+        cli_use_alt_buffer_flag: bool = True,
     ) -> Self:
         if cls._instance:
             raise RuntimeError(f"{cls.__name__} cannot be instantiated more than once")
@@ -205,14 +217,55 @@ class Shell:
         handlers: HandlerRegistry | None = None,
         *,
         builtins: bool = True,
+        enable_cli: bool = True,
+        cli_use_alt_buffer_flag: bool = True,
     ) -> None:
         self._registry = registry or get_registry()
         # TODO: pls figure out a way to not use globals name wrangling
         self._handlers = handlers or globals()["handlers"]
         self._prompt = None
+        self._cli_use_alt_buffer_flag = cli_use_alt_buffer_flag
+
+        # cli arg flags
+        self._cli_use_alt_buffer = None
 
         if builtins:
             self._register_builtin_commands()
+
+    @property
+    def registry(self) -> CommandRegistry:
+        """Get the command registry."""
+        return self._registry
+
+    @registry.setter
+    def registry(self, registry: CommandRegistry) -> None:
+        """Set the command registry."""
+        self._registry = registry
+        # ensure the prompt completer's registry matches the Shell's to prevent faulty completions
+        if self._prompt is not None and isinstance(
+            self._prompt.completer, CommandCompleter
+        ):
+            self._prompt.completer.registry = registry
+
+    @property
+    def handlers(self) -> HandlerRegistry:
+        """Get the handlers registry."""
+        return self._handlers
+
+    @handlers.setter
+    def handlers(self, handlers: HandlerRegistry) -> None:
+        """Set the handlers registry."""
+        self._handlers = handlers
+
+    @classmethod
+    def _enter_alt_buffer(cls) -> None:
+        sys.stdout.write("\033[?1049h")
+        sys.stdout.flush()
+
+    @classmethod
+    def _leave_alt_buffer(cls) -> None:
+        sys.stdout.write("\033[?1049l")
+        sys.stdout.flush()
 
     def _register_builtin_commands(self) -> None:
         self._registry.register(self._exit_command, name="exit")
@@ -249,40 +302,57 @@ class Shell:
                     )
                     print(f"    {child_name}{desc}")
 
-    @property
-    def registry(self) -> CommandRegistry:
-        """Get the command registry."""
-        return self._registry
+    def _show_cli_help(self) -> None:
+        print("Usage:")
+        print(f" {sys.argv[0]} [options]")
+        print(f" {sys.argv[0]} <command> [args...]")
+        print()
+        print("Options:")
+        print(" --help, -h, -? Show this help message")
+        if self._cli_use_alt_buffer_flag:
+            print(" --no-alt-buffer Disable alternative screen buffer")
+        print()
+        try:
+            self._help_command(sys.argv[2])
+        except IndexError:
+            self._help_command(None)
+        print()
+        print("If no command is provided, starts interactive shell mode.")
 
-    @registry.setter
-    def registry(self, registry: CommandRegistry) -> None:
-        """Set the command registry."""
-        self._registry = registry
-        # ensure the prompt completer's registry matches the Shell's to prevent faulty completions
-        if self._prompt is not None and isinstance(
-            self._prompt.completer, CommandCompleter
-        ):
-            self._prompt.completer.registry = registry
+    def _handle_cli_args(self) -> bool:
+        args = sys.argv[1:]  # skip script name
 
-    @property
-    def handlers(self) -> HandlerRegistry:
-        """Get the handlers registry."""
-        return self._handlers
+        if not args:
+            return True
 
-    @handlers.setter
-    def handlers(self, handlers: HandlerRegistry) -> None:
-        """Set the handlers registry."""
-        self._handlers = handlers
+        if args[0] in ("--help", "-h", "-?"):
+            self._show_cli_help()
+            return False
 
-    @classmethod
-    def _enter_alt_buffer(cls) -> None:
-        sys.stdout.write("\033[?1049h")
-        sys.stdout.flush()
+        # TODO: maybe use a named tuple for this instead?
+        # isn't as pythonic but more extensible; tbd
+        filtered_args: list[str] = []
+        for arg in args:
+            if arg == "--no-alt-buffer" and self._cli_use_alt_buffer_flag:
+                self._cli_use_alt_buffer = False
+            else:
+                filtered_args.append(arg)
 
-    @classmethod
-    def _leave_alt_buffer(cls) -> None:
-        sys.stdout.write("\033[?1049l")
-        sys.stdout.flush()
+        # no command after filtering flags, run shell
+        if not filtered_args:
+            return True
+
+        try:
+            self._execute(" ".join(filtered_args))
+        except InterruptException:
+            # ignore exit commands in cli mode
+            # causes issues from my testing
+            pass
+        except Exception as e:
+            self._handlers[Event.COMMAND_ERROR](e)
+            sys.exit(1)
+
+        return False
 
     def _transform_types(
         self, types: list[Any], args: list[str], arg_names: list[str]
@@ -468,6 +538,68 @@ class Shell:
         else:
             return arg
 
+    def _execute(self, line: str) -> None:
+        try:
+            parts = line.strip().split()
+            if not parts:
+                return
+
+            cmd_info = self._registry[parts[0]]
+            if not cmd_info:
+                self._handlers[Event.UNKNOWN_COMMAND](parts[0])
+                return
+
+            args_start_index = 1
+            for i, part in enumerate(parts[1:], 1):
+                if part in cmd_info.children:
+                    cmd_info = cmd_info.children[part]
+                    args_start_index = i + 1
+                else:
+                    break
+
+            args = parts[args_start_index:]
+
+            func_signature = inspect.signature(cmd_info.func)
+            type_hints = get_type_hints(cmd_info.func)
+
+            # ignore Any because we don't know the type yet
+            param_types = {
+                k: v
+                for k, v in type_hints.items()  # pyright: ignore[reportAny]
+                if k != "return"
+            }
+
+            params: list[Parameter] = list(func_signature.parameters.values())
+            param_names = list(param_types.keys())
+            param_type_list = list(param_types.values())
+
+            effective_args: list[Any] = []
+            for i, arg in enumerate(args):
+                if arg == "none" and i < len(params):
+                    param = params[i]
+                    # ignore Any since default can be of any type and that intended
+                    if param.default != inspect.Parameter.empty:  # pyright: ignore[reportAny]
+                        break
+                effective_args.append(arg)
+
+            if effective_args:
+                transformed_args = self._transform_types(
+                    param_type_list[: len(effective_args)],
+                    effective_args,
+                    arg_names=param_names[: len(effective_args)],
+                )
+            else:
+                transformed_args = []
+
+            cmd_info.func(*transformed_args)
+
+        except InvalidArgumentTypeException:
+            pass
+        except InterruptException:
+            raise
+        except Exception as e:
+            self._handlers[Event.COMMAND_ERROR](e)
+
     def run(
         self,
         prompt: Prompt,
@@ -477,19 +609,28 @@ class Shell:
     ) -> None:
         """
         Runs the shell loop with the specified prompt and other configuration.
+        Automatically handles CLI arguments if provided.
 
         Args:
             prompt: The Prompt instance to use for input
             start_text: Optional text to print at the beginning
             use_alt_buffer: Whether to use the terminal's alternative screen buffer
         """
+        should_run_interactive = self._handle_cli_args()
+
+        if not should_run_interactive:
+            return
+
+        # Use CLI config if provided, otherwise use parameter
+        if self._cli_use_alt_buffer is not None:
+            use_alt_buffer = self._cli_use_alt_buffer
+
         if not isinstance(prompt.completer, CommandCompleter):
             raise TypeError(
                 f"Prompt must have a completer of type CommandCompleter, got {prompt.completer.__class__.__name__}"
             )
 
         self._prompt = prompt
-        # ensure the prompt completer's registry matches the Shell's to prevent faulty completions
         prompt.completer.registry = self._registry
 
         if use_alt_buffer:
@@ -502,83 +643,11 @@ class Shell:
             with prompt:
                 try:
                     for line in prompt:
-                        try:
-                            parts = line.strip().split()
-                            if not parts:
-                                continue  # No input provided
-
-                            # Traverse command tree to find the correct command
-                            cmd_info = self._registry[parts[0]]
-                            if not cmd_info:
-                                self._handlers[Event.UNKNOWN_COMMAND](parts[0])
-                                continue
-
-                            args_start_index = 1
-                            for i, part in enumerate(parts[1:], 1):
-                                if part in cmd_info.children:
-                                    cmd_info = cmd_info.children[part]
-                                    args_start_index = i + 1
-                                else:
-                                    break  # No more subcommands
-
-                            args = parts[args_start_index:]
-
-                            func_signature = inspect.signature(cmd_info.func)
-                            type_hints = get_type_hints(cmd_info.func)
-
-                            try:
-                                # Filter out return type annotation
-                                param_types = {
-                                    k: v
-                                    for k, v in type_hints.items()  # pyright: ignore[reportAny]
-                                    if k != "return"
-                                }
-
-                                # Get parameter info for default handling
-                                params: list[Parameter] = list(
-                                    func_signature.parameters.values()
-                                )
-                                param_names = list(param_types.keys())
-                                param_type_list = list(param_types.values())
-
-                                # param_type_list already contains the correct types
-                                typed_param_list = param_type_list
-
-                                # Check for "none" arguments that should trigger defaults
-                                effective_args: list[Any] = []
-                                for i, arg in enumerate(args):
-                                    if arg == "none" and i < len(params):
-                                        param = params[i]
-                                        # If this parameter has a default, stop processing args here
-                                        if param.default != inspect.Parameter.empty:  # pyright: ignore[reportAny]
-                                            break
-                                    effective_args.append(arg)
-
-                                # Only transform the effective arguments
-                                if effective_args:
-                                    transformed_args = self._transform_types(
-                                        typed_param_list[: len(effective_args)],
-                                        effective_args,
-                                        arg_names=param_names[: len(effective_args)],
-                                    )
-                                else:
-                                    transformed_args = []
-
-                            except InvalidArgumentTypeException:
-                                pass
-                            else:
-                                cmd_info.func(*transformed_args)
-                        except InterruptException:
-                            self._handlers[Event.INTERRUPT]()
-                            break
-                        except Exception as e:
-                            self._handlers[Event.COMMAND_ERROR](e)
-
+                        self._execute(line)
                 except InterruptException:
                     if use_alt_buffer:
                         self._leave_alt_buffer()
                     self._handlers[Event.INTERRUPT]()
-
         finally:
             if use_alt_buffer:
                 self._leave_alt_buffer()
