@@ -50,7 +50,7 @@ jobs:
             cat <<EOW >> release_body.md
 
           > [!IMPORTANT]
-          > This is pre-release version and will probably contain lots of bugs and issues.
+          > This is a pre-release version and will probably contain lots of bugs and issues.
           EOW
               fi
 
