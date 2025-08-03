@@ -294,7 +294,7 @@ class CommandCompleter(Completer):
             display_text += " (optional)"
 
         return self._create_completion(
-            complete_text,  # empty string so we dont insert any text
+            complete_text,
             context.parsed.current_word,  # what the user typed
             display=display_text,
             display_meta=type_str,
