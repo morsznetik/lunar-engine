@@ -17,6 +17,8 @@ By default, commands will also be accepted straight from the normal command line
 
 ## Usage
 
+See [examples](https://github.com/morsznetik/lunar-engine/tree/master/examples) for more in-depth detail.
+
 ### Hello, world!
 
 A bare minimum Lunar Engine app could look like this.
