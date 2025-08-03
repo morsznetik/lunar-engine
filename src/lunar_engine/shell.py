@@ -1,3 +1,4 @@
+import traceback
 import inspect
 import sys
 from enum import Enum, auto
@@ -17,15 +18,17 @@ from typing import (
 from .command import CommandRegistry, get_registry
 from .exceptions import InterruptException, InvalidArgumentTypeException
 from .prompt import CommandCompleter, Prompt
+from .utils import pretty_format_error
 
 
+type UnexpectedExceptionHandler = Callable[[Exception], None]
+type CommandExceptionHandler = Callable[[Exception], None]
 type UnknownCommandHandler = Callable[[str], None]
 type InterruptHandler = Callable[[], None]
-type ErrorHandler = Callable[[Exception], None]
 type TypeTransformErrorHandler = Callable[
     [str, str, str | None, str, ValueError | None], None
 ]
-type NotEnoughArgumentsHandler = Callable[[int], None]
+type ArgumentCountErrorHandler = Callable[[int, int, int], None]
 type Handler = Callable[..., None]
 
 type TransformedArgs = (
@@ -34,11 +37,22 @@ type TransformedArgs = (
 
 
 class Event(Enum):
+    UNEXPECTED_EXCEPTION = auto()
+    COMMAND_EXCEPTION = auto()
     UNKNOWN_COMMAND = auto()
     INTERRUPT = auto()
-    COMMAND_ERROR = auto()
     TYPE_TRANSFORM_ERROR = auto()
-    COMMAND_NOT_ENOUGH_ARGUMENTS = auto()
+    ARGUMENT_COUNT_ERROR = auto()
+
+
+def _default_unexpected_exception(e: Exception) -> None:
+    print(pretty_format_error("Unexpected exception caught:", str(e)))
+    traceback.print_exception(type(e), e, e.__traceback__, file=sys.stderr)
+
+
+def _default_command_exception(e: Exception) -> None:
+    print(pretty_format_error("Command error:", str(e)))
+    traceback.print_exception(type(e), e, e.__traceback__, file=sys.stderr)
 
 
 def _default_unknown_command(name: str) -> None:
@@ -49,10 +63,6 @@ def _default_interrupt() -> None:
     print("Interrupted.")
 
 
-def _default_command_error(e: Exception) -> None:
-    print(f"Error: {e}")
-
-
 def _default_type_transform_error(
     arg: str,
     arg_name: str,
@@ -60,7 +70,7 @@ def _default_type_transform_error(
     options: set[str] | None = None,
     e: ValueError | None = None,
 ) -> None:
-    msg = f'For argument "{arg_name}", could not interpret "{arg}"'
+    msg = f"For argument {arg_name!r}, could not interpret {arg!r}"
     if arg_type is not None:
         msg += f" as type {arg_type}"
     if e:
@@ -70,8 +80,15 @@ def _default_type_transform_error(
         print(f"Expected one of: {', '.join(options)}")
 
 
-def _default_command_not_enough_arguments(num_expected_args: int) -> None:
-    print(f"No arguments provided while expecting at least {num_expected_args}.")
+def _default_argument_error(provided: int, expected: int, total: int) -> None:
+    if provided < expected:
+        print(
+            f"Missing {expected - provided} required argument{'s' if expected - provided != 1 else ''}"
+        )
+    else:
+        print(
+            f"Got {provided - total} extra argument{'s' if provided - total != 1 else ''}"
+        )
 
 
 class HandlerRegistry:
@@ -81,15 +98,48 @@ class HandlerRegistry:
 
     def __init__(self) -> None:
         self._handlers = {
+            Event.UNEXPECTED_EXCEPTION: _default_unexpected_exception,
             Event.UNKNOWN_COMMAND: _default_unknown_command,
             Event.INTERRUPT: _default_interrupt,
-            Event.COMMAND_ERROR: _default_command_error,
+            Event.COMMAND_EXCEPTION: _default_command_exception,
             Event.TYPE_TRANSFORM_ERROR: _default_type_transform_error,
-            Event.COMMAND_NOT_ENOUGH_ARGUMENTS: _default_command_not_enough_arguments,
+            Event.ARGUMENT_COUNT_ERROR: _default_argument_error,
         }
 
     def __getitem__(self, event: Event) -> Handler:
         return self._handlers[event]
+
+    def on_unexpected_exception(
+        self, func: UnexpectedExceptionHandler | None = None
+    ) -> (
+        UnexpectedExceptionHandler
+        | Callable[[UnexpectedExceptionHandler], UnexpectedExceptionHandler]
+    ):
+        """Decorator for unexpected error event."""
+
+        def decorator(f: UnexpectedExceptionHandler) -> UnexpectedExceptionHandler:
+            self._handlers[Event.UNKNOWN_COMMAND] = f
+            return f
+
+        if func is not None:
+            return decorator(func)
+        return decorator
+
+    def on_command_exception(
+        self, func: CommandExceptionHandler | None = None
+    ) -> (
+        CommandExceptionHandler
+        | Callable[[CommandExceptionHandler], CommandExceptionHandler]
+    ):
+        """Decorator for command error event."""
+
+        def decorator(f: CommandExceptionHandler) -> CommandExceptionHandler:
+            self._handlers[Event.COMMAND_EXCEPTION] = f
+            return f
+
+        if func is not None:
+            return decorator(func)
+        return decorator
 
     def on_unknown_command(
         self, func: UnknownCommandHandler | None = None
@@ -119,19 +169,6 @@ class HandlerRegistry:
             return decorator(func)
         return decorator
 
-    def on_command_error(
-        self, func: ErrorHandler | None = None
-    ) -> ErrorHandler | Callable[[ErrorHandler], ErrorHandler]:
-        """Decorator for command error event."""
-
-        def decorator(f: ErrorHandler) -> ErrorHandler:
-            self._handlers[Event.COMMAND_ERROR] = f
-            return f
-
-        if func is not None:
-            return decorator(func)
-        return decorator
-
     def on_type_transform_error(
         self, func: TypeTransformErrorHandler | None = None
     ) -> (
@@ -148,16 +185,16 @@ class HandlerRegistry:
             return decorator(func)
         return decorator
 
-    def on_command_not_enough_arguments(
-        self, func: NotEnoughArgumentsHandler | None = None
+    def on_argument_count_error(
+        self, func: ArgumentCountErrorHandler | None = None
     ) -> (
-        NotEnoughArgumentsHandler
-        | Callable[[NotEnoughArgumentsHandler], NotEnoughArgumentsHandler]
+        ArgumentCountErrorHandler
+        | Callable[[ArgumentCountErrorHandler], ArgumentCountErrorHandler]
     ):
-        """Decorator for type transform error event."""
+        """Decorator for argument count error event."""
 
-        def decorator(f: NotEnoughArgumentsHandler) -> NotEnoughArgumentsHandler:
-            self._handlers[Event.COMMAND_NOT_ENOUGH_ARGUMENTS] = f
+        def decorator(f: ArgumentCountErrorHandler) -> ArgumentCountErrorHandler:
+            self._handlers[Event.ARGUMENT_COUNT_ERROR] = f
             return f
 
         if func is not None:
@@ -349,7 +386,7 @@ class Shell:
             # causes issues from my testing
             pass
         except Exception as e:
-            self._handlers[Event.COMMAND_ERROR](e)
+            self._handlers[Event.UNEXPECTED_EXCEPTION](e)
             sys.exit(1)
 
         return False
@@ -430,7 +467,6 @@ class Shell:
         suppress_error: bool = False,
     ) -> TransformedArgs:
         # for any ignore Anys in this function, it's because it should be Any, same as above
-
         origin = get_origin(arg_type)  # pyright: ignore[reportAny]
 
         # Literal types
@@ -573,6 +609,14 @@ class Shell:
             param_names = list(param_types.keys())
             param_type_list = list(param_types.values())
 
+            # ignore Any since default can be of any type and that intended
+            required_params = [
+                p
+                for p in params
+                if p.default == inspect.Parameter.empty  # pyright: ignore[reportAny]
+            ]
+            num_required = len(required_params)
+
             effective_args: list[Any] = []
             for i, arg in enumerate(args):
                 if arg == "none" and i < len(params):
@@ -582,6 +626,13 @@ class Shell:
                         break
                 effective_args.append(arg)
 
+            # validate count
+            if len(effective_args) < num_required or len(effective_args) > len(params):
+                self._handlers[Event.ARGUMENT_COUNT_ERROR](
+                    len(effective_args), num_required, len(params)
+                )
+                return
+
             if effective_args:
                 transformed_args = self._transform_types(
                     param_type_list[: len(effective_args)],
@@ -589,16 +640,24 @@ class Shell:
                     arg_names=param_names[: len(effective_args)],
                 )
             else:
+                if num_required > 0:
+                    self._handlers[Event.ARGUMENT_COUNT_ERROR](
+                        0, num_required, len(params)
+                    )
+                    return
                 transformed_args = []
 
-            cmd_info.func(*transformed_args)
-
+            try:
+                cmd_info.func(*transformed_args)
+            except Exception as e:
+                self._handlers[Event.COMMAND_EXCEPTION](e)
+                return
         except InvalidArgumentTypeException:
             pass
         except InterruptException:
             raise
         except Exception as e:
-            self._handlers[Event.COMMAND_ERROR](e)
+            self._handlers[Event.UNEXPECTED_EXCEPTION](e)
 
     def run(
         self,

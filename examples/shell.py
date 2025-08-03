@@ -8,7 +8,7 @@ registry: CommandRegistry = CommandRegistry()
 prompt = Prompt("$ ", completer=CommandCompleter(registry))
 
 
-@handlers.on_command_error
+@handlers.on_command_exception
 def on_command_error(e: Exception) -> None:
     print(f"{FgColors.Red}---ERROR: {e}---{TextEffects.Reset}")
 
