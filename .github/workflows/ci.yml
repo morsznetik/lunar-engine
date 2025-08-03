@@ -32,3 +32,28 @@ jobs:
           key: pre-commit|${{ env.PC_HASH }}|${{ hashFiles('.pre-commit-config.yaml') }}
       - name: Run pre-commit
         run: uv run pre-commit run -v --all-files --show-diff-on-failure --color=always
+
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+      - name: Install Python 3.13
+        run: uv python install 3.13
+      - name: Install dependencies
+        run: uv sync
+      - name: Run tests
+        run: |
+          if find tests -type f | grep -q .; then
+            uv run pytest --cov=lunar_engine --cov-report=term --cov-report=html
+          else
+            exit 0
+          fi
+      - name: Upload HTML coverage report
+        uses: actions/upload-artifact@v4
+        with:
+          name: htmlcov
+          path: htmlcov/
