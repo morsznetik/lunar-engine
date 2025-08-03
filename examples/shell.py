@@ -1,36 +1,39 @@
-from lunar_engine.utils import FgColors, TextEffects
-from lunar_engine.command import CommandRegistry
-from lunar_engine.shell import Shell, handlers
-from lunar_engine.prompt import Prompt, CommandCompleter
+# EXAMPLE: Shell
+#
+# The Shell is the main orchestrator of your app.
+# It executes commands, passes errors to handlers, and manages output.
 
-registry: CommandRegistry = CommandRegistry()
-
-prompt = Prompt("$ ", completer=CommandCompleter(registry))
-
-
-@handlers.on_command_exception
-def on_command_error(e: Exception) -> None:
-    print(f"{FgColors.Red}---ERROR: {e}---{TextEffects.Reset}")
+from lunar_engine.command import CommandRegistry, command
+from lunar_engine.shell import Shell
+from lunar_engine.prompt import Prompt
 
 
-@handlers.on_interrupt
-def on_interrupt() -> None:
-    print("---INTERRUPTED---")
-
-
-@handlers.on_unknown_command
-def on_unknown_command(name: str) -> None:
-    print(f"---COMMAND NOT FOUND: {name}---")
-
-
-@registry.command(description="A command.")
+@command()
 def test(should_fail: bool) -> None:
-    print("You ran this command!")
     if should_fail:
-        raise Exception(f"{should_fail=}")
+        raise Exception("Failure!")
+    print("Success!")
 
 
-shell = Shell(registry)
+# @command(), Shell, and Prompt default to using the global registry for everything.
+# However, you can also create your own registry.
+my_registry = CommandRegistry()
 
 
+@my_registry.command()
+def secret() -> None:
+    print("Secret command!")
+
+
+@command()
+def switch() -> None:
+    # You can switch registries at runtime!
+    # After this, the secret command will become available.
+    shell.registry = my_registry
+    print("Switched registries!")
+
+
+prompt = Prompt("$ ")
+
+shell = Shell()
 shell.run(prompt, start_text="Hi there!")

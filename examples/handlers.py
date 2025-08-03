@@ -1,24 +1,33 @@
-import copy
+# EXAMPLE: Handlers
+#
+# Handlers are used to respond to events that occur during the shell's execution.
+# For example, when a command fails, an unknown command is run, or invalid arguments are provided.
+
 from lunar_engine.shell import handlers, Shell, HandlerRegistry
 from lunar_engine.prompt import Prompt
-from lunar_engine.command import command, get_registry
-from typing import Literal
+from lunar_engine.command import command
 
 
+# Handlers are generally registered with the global "handlers" variable. This represents the global handler registry.
+# When an unknown command is run
 @handlers.on_unknown_command
 def unknown_command(name: str) -> None:
     print(f"Oops! {name} is not a command.")
 
 
+# When the program is interrupted
 @handlers.on_interrupt
 def interrupt() -> None:
     print("Connection terminated.")
 
 
+# You can also define your own sets of handlers.
 my_handlers = HandlerRegistry()
 shell = Shell()
 
 
+# This callback is only defined under "my_handlers", so shell won't be running this on it's own, as it defaults
+# to the global handlers.
 @my_handlers.on_unknown_command
 def my_unknown_command(name: str) -> None:
     print(f"This is a different handler! {name} is not a command.")
@@ -26,7 +35,7 @@ def my_unknown_command(name: str) -> None:
 
 @command()
 def hello(name: str = "world", n: int = 1) -> None:
-    """Hiii!! >;3"""
+    """Hi!"""
     print("\n".join([f"Hello, {name}!"] * int(n)))
 
 
@@ -37,38 +46,12 @@ def fastfetch() -> None:
     subprocess.run(["fastfetch"])
 
 
+# Handler registries can be switched at runtime.
+# After this command is run, only the handlers from "my_handlers" will be used.
 @command()
 def switch_handler() -> None:
-    shell.handlers = my_handlers
+    shell.handlers = my_handlers  # Switches handlers!
     print("Handler switched")
-
-
-@command()
-def switch_to_secret_mode() -> None:
-    if shell.registry is not my_commands:
-        shell.registry = my_commands
-    else:
-        shell.registry = get_registry()
-    print("Commands switched")
-    print(shell.registry)
-    print(shell.registry.keys())
-
-
-my_commands = copy.deepcopy(get_registry())
-
-
-@my_commands.command()
-def secret(
-    a: int | float, b: int | float, c: Literal["hello", 1, False] = "hello"
-) -> None:
-    assert isinstance(a, (int, float))
-    assert isinstance(b, (int, float))
-    print(f"{a} + {b} = {a + b}, {c}")
-
-
-@my_commands.command()
-def hello2(name: list[str]) -> None:
-    print(f"Hello, {name}!")
 
 
 shell.run(

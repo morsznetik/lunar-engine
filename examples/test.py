@@ -1,9 +1,12 @@
+# TESTING: This is not really an example, and more for testing to make sure everything works.
+
 from lunar_engine.prompt import CommandCompleter, Prompt
 from lunar_engine.command import get_registry, command
 from lunar_engine.exceptions import InterruptException
 from prompt_toolkit.completion import FuzzyWordCompleter
 from typing import Literal
 
+# Prompt testing
 
 prompt = Prompt(
     "> ",
@@ -26,7 +29,7 @@ with prompt:
     except InterruptException:
         print("Goodbye!")
     else:
-        print("passed")
+        print("---PASSED---")
 
 assert not prompt
 
@@ -38,9 +41,11 @@ try:
 except InterruptException:
     print("Goodbye!")
 except RuntimeError:
-    print("passed")
+    print("---PASSED---")
 
 assert not prompt
+
+# Commands testing
 
 registry = get_registry()
 
