@@ -1,6 +1,5 @@
 import inspect
 import sys
-from copy import deepcopy
 from enum import Enum, auto
 from inspect import Parameter
 from itertools import zip_longest
@@ -207,7 +206,7 @@ class Shell:
         *,
         builtins: bool = True,
     ) -> None:
-        self._registry = deepcopy(registry or get_registry())
+        self._registry = registry or get_registry()
         # TODO: pls figure out a way to not use globals name wrangling
         self._handlers = handlers or globals()["handlers"]
         self._prompt = None

@@ -33,5 +33,3 @@ shell = Shell(registry)
 
 
 shell.run(prompt, start_text="Hi there!")
-
-print(registry["help"])  # builtins should not appear
