@@ -23,7 +23,7 @@ jobs:
       - name: Prepare release body and flags
         id: prep_release
         run: |
-          LAST_TAG=$(git describe --tags --abbrev=0 HEAD^)
+          LAST_TAG=$(git tag --sort=creatordate | grep -B1 $(git describe --tags --abbrev=0) | head -n1)
           THIS_TAG=$(git describe --tags --abbrev=0)
           LAST_DATE=$(git log -1 --format=%ai $LAST_TAG | cut -d' ' -f1)
           THIS_DATE=$(git log -1 --format=%ai $THIS_TAG | cut -d' ' -f1)
