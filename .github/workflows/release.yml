@@ -57,7 +57,7 @@ jobs:
           THIS_DATE=$(git log -1 --format=%ct "$THIS_TAG")
           SECONDS_AGO=$((THIS_DATE - LAST_DATE))
           COMMIT_COUNT=$(git rev-list --count "$LAST_TAG..$THIS_TAG")
-          COMMITS=$(git log --oneline "$LAST_TAG..$THIS_TAG" --pretty=format:"- %s (%h)" | head -20)
+          COMMITS=$(git log --oneline "$LAST_TAG..$THIS_TAG" --pretty=format:"- %s (%h)" | head -5)
 
           # format time
           if [ $SECONDS_AGO -lt 3600 ]; then
