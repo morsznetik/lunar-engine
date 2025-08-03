@@ -3,7 +3,7 @@ name: Release
 on:
   push:
     tags:
-      - '*'
+      - 'v*'
 
 permissions:
   contents: write
@@ -11,10 +11,21 @@ permissions:
 jobs:
   github-release:
     runs-on: ubuntu-latest
+    outputs:
+      release-url: ${{ steps.create_release.outputs.html_url }}
+
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v4
         with:
           fetch-depth: 0
+      - name: Validate tag format
+        run: |
+          TAG="${{ github.ref_name }}"
+          if [[ ! "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9]+)?$ ]]; then
+            echo "::error::Invalid tag format: $TAG. Expected format: v1.2.3 or v1.2.3-beta"
+            exit 1
+          fi
       - name: Setup uv
         uses: astral-sh/setup-uv@v6
         with:
@@ -24,47 +35,93 @@ jobs:
       - name: Install dependencies with uv
         run: uv sync
       - name: Build package
-        run: uv tool install build && uvx --from build pyproject-build
-      - name: Prepare release body and flags
-        id: prep_release
         run: |
-          LAST_TAG=$(git tag --sort=creatordate | grep -B1 $(git describe --tags --abbrev=0) | head -n1)
-          THIS_TAG=$(git describe --tags --abbrev=0)
-          LAST_DATE=$(git log -1 --format=%ai $LAST_TAG | cut -d' ' -f1)
-          THIS_DATE=$(git log -1 --format=%ai $THIS_TAG | cut -d' ' -f1)
-          DAYS_AGO=$(( ( $(date -d "$THIS_DATE" +%s) - $(date -d "$LAST_DATE" +%s) )/(60*60*24) ))
-          COMMIT_COUNT=$(git rev-list --count $LAST_TAG..$THIS_TAG)
+          uv tool install build
+          uvx --from build pyproject-build
 
-          cat <<EOF > release_body.md
-          {Stuff here :3}
+      - name: Verify build artifacts
+        run: |
+          if [ ! -d "dist" ] || [ -z "$(ls -A dist)" ]; then
+            echo "::error::No build artifacts found in dist/"
+            exit 1
+          fi
+          echo "Built artifacts:"
+          ls -la dist/
+
+      - name: Generate changelog
+        id: changelog
+        run: |
+          THIS_TAG="${{ github.ref_name }}"
+          LAST_TAG=$(git tag --sort=creatordate | grep -B1 $(git describe --tags --abbrev=0) | head -n1)
+          LAST_DATE=$(git log -1 --format=%ct "$LAST_TAG")
+          THIS_DATE=$(git log -1 --format=%ct "$THIS_TAG")
+          SECONDS_AGO=$((THIS_DATE - LAST_DATE))
+          COMMIT_COUNT=$(git rev-list --count "$LAST_TAG..$THIS_TAG")
+          COMMITS=$(git log --oneline "$LAST_TAG..$THIS_TAG" --pretty=format:"- %s (%h)" | head -20)
+
+          # format time
+          if [ $SECONDS_AGO -lt 3600 ]; then
+            MINUTES_AGO=$((SECONDS_AGO / 60))
+            TIME_UNIT="minute$([ $MINUTES_AGO -ne 1 ] && echo "s")"
+            TIME_TEXT="$COMMIT_COUNT commit$([ $COMMIT_COUNT -ne 1 ] && echo "s") in the last $MINUTES_AGO $TIME_UNIT"
+          elif [ $SECONDS_AGO -lt 86400 ]; then
+            HOURS_AGO=$((SECONDS_AGO / 3600))
+            TIME_UNIT="hour$([ $HOURS_AGO -ne 1 ] && echo "s")"
+            TIME_TEXT="$COMMIT_COUNT commit$([ $COMMIT_COUNT -ne 1 ] && echo "s") in the last $HOURS_AGO $TIME_UNIT"
+          else
+            DAYS_AGO=$((SECONDS_AGO / 86400))
+            TIME_UNIT="day$([ $DAYS_AGO -ne 1 ] && echo "s")"
+            TIME_TEXT="$COMMIT_COUNT commit$([ $COMMIT_COUNT -ne 1 ] && echo "s") in the last $DAYS_AGO $TIME_UNIT"
+          fi
+
+          # is it pre-release?
+          PRERELEASE="false"
+          if [[ "$THIS_TAG" == *-beta ]] || [[ "$THIS_TAG" == v0.* ]]; then
+            PRERELEASE="true"
+          fi
+
+          cat > release_body.md << EOF
+          ## What's New
+          {Stuff here ;3}
 
           ---
 
-          There were $COMMIT_COUNT commits in the last $DAYS_AGO days since the last release!
-          **Full Changelog**: https://github.com/morsznetik/lunar-engine/compare/$LAST_TAG...$THIS_TAG
+          $TIME_TEXT since the last release!
+
+          ## Recent Changes
+          $COMMITS
+
+          **Full Changelog**: https://github.com/morsznetik/lunar-engine/compare/$LAST_TAG..$THIS_TAG
           EOF
 
-          prerelease=false
-          if [[ "$THIS_TAG" == *-beta || "$THIS_TAG" == v0* ]]; then
-            prerelease=true
-            cat <<EOW >> release_body.md
+          if [ "$PRERELEASE" = "true" ]; then
+            cat >> release_body.md << EOF
 
           > [!IMPORTANT]
           > This is a pre-release version and will probably contain lots of bugs and issues.
-          EOW
-              fi
+          EOF
+          fi
 
-              echo "release_body_path=release_body.md" >> $GITHUB_OUTPUT
-              echo "prerelease=$prerelease" >> $GITHUB_OUTPUT
+          echo "prerelease=$PRERELEASE" >> $GITHUB_OUTPUT
+          echo "previous_tag=$LAST_TAG" >> $GITHUB_OUTPUT
 
       - name: Create GitHub Release
+        id: create_release
         uses: ncipollo/release-action@v1
         with:
           tag: ${{ github.ref_name }}
-          name: Release ${{ github.ref_name }}
-          bodyFile: ${{ steps.prep_release.outputs.release_body_path }}
+          name: "Release ${{ github.ref_name }}"
+          bodyFile: release_body.md
           draft: true
-          prerelease: ${{ steps.prep_release.outputs.prerelease }}
-          artifacts: dist/*
+          prerelease: ${{ steps.changelog.outputs.prerelease }}
+          artifacts: "dist/*"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      #- name: Upload to PyPI
+      #  if: ${{ !fromJSON(steps.changelog.outputs.prerelease) }}  # only for stable
+      #  run: |
+      #    uv tool install twine
+      #    uvx twine upload dist/* --username __token__ --password ${{ secrets.PYPI_TOKEN }}
+      #  env:
+      #    PYPI_TOKEN: ${{ secrets.PYPI_TOKEN }}
