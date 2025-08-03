@@ -54,4 +54,4 @@ jobs:
           body_path: release_body.md
           prerelease: ${{ steps.prep_release.outputs.prerelease }}
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GH_PAT_RELEASE }}
