@@ -12,6 +12,8 @@ def _esc(*arg: int) -> str:
 
 
 class FgColors(Enum):
+    """ANSI constants for foreground colors."""
+
     Black = _esc(30)
     Red = _esc(31)
     Green = _esc(32)
@@ -28,6 +30,8 @@ class FgColors(Enum):
 
 
 class BgColors(Enum):
+    """ANSI constants for background colors."""
+
     Black = _esc(40)
     Red = _esc(41)
     Green = _esc(42)
@@ -44,6 +48,8 @@ class BgColors(Enum):
 
 
 class TextEffects(Enum):
+    """ANSI constants for text effects, e.g., bold, underline."""
+
     Reset = _esc(0)
     Bold = _esc(1)
     Underline = _esc(4)
