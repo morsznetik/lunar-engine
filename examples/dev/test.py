@@ -22,7 +22,7 @@ def calc() -> None:
     pass
 
 
-@command(name="calc")
+@command(name="add")
 def add_non_calc(*_: int | float) -> None:
     pass
 

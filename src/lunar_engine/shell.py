@@ -587,7 +587,7 @@ class Shell:
                 return
 
             cmd_info = self._registry[parts[0]]
-            if not cmd_info:
+            if not cmd_info or cmd_info.parent is not None:
                 self._handlers[Event.UNKNOWN_COMMAND](parts[0])
                 return
 
