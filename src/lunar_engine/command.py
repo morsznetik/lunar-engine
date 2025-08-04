@@ -12,11 +12,10 @@ from .exceptions import (
 
 type CommandFunc = Callable[..., None]
 
-allowed_base_types = {int, float, str, bool, bytes, list, NoneType}
-
 
 # ignore reportAny because we cannot infer the type of the args
 def _is_allowed_type(type_hint: Any) -> bool:  # pyright: ignore[reportAny]
+    allowed_base_types = {int, float, str, bool, bytes, list, NoneType}
     # early return for base types
     if type_hint in allowed_base_types:
         return True
@@ -93,7 +92,7 @@ class CommandInfo:
                 if not _is_allowed_type(type_hint):
                     raise InvalidArgumentTypeException(
                         f"Command {self.name!r}: parameter {name!r} has type {type_hint}, "
-                        + f"but only simple builtin types are allowed: {', '.join(t.__name__ for t in allowed_base_types)}"
+                        + "but only simple builtin types are allowed: str, int, float, bool, bytes, list, None, or Enum"
                     )
 
             # also check *args type
@@ -102,7 +101,7 @@ class CommandInfo:
                 if not _is_allowed_type(type_hint):
                     raise InvalidArgumentTypeException(
                         f"Command {self.name!r}: parameter {name!r} has type {type_hint}, "
-                        + f"but only simple builtin types are allowed: {', '.join(t.__name__ for t in allowed_base_types)}"
+                        + "but only simple builtin types are allowed: str, int, float, bool, bytes, list, None, or Enum"
                     )
 
 
