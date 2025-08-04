@@ -177,30 +177,73 @@ class CommandCompleter(Completer):
             # if not, show nothing for invalid command paths
             return
 
-        # try to complete type-specific values first
-        yield from self._complete_type_values(ctx)
-
-        # try to complete arguments
-        yield from self._complete_arguments(ctx)
-
-        # then show subcommands only if we haven't started typing arguments
-        if self._should_complete_subcommands(ctx):
+        if self._is_in_argument_context(ctx):
+            # prioritize argument completions when we're clearly in argument context
+            yield from self._complete_type_values(ctx)
+            yield from self._complete_arguments(ctx)
+        else:
+            # when not clearly in argument context, show both but prioritize subcommands
             yield from self._complete_subcommands(ctx)
+            yield from self._complete_type_values(ctx)
+            yield from self._complete_arguments(ctx)
+
+    def _is_in_argument_context(self, ctx: CompletionContext) -> bool:
+        parsed = ctx.parsed
+
+        # If we have any argument parts already, we're in argument context
+        if parsed.arg_parts:
+            return True
+
+        # If current word starts with --, we're typing a flag
+        if parsed.current_word.startswith("--"):
+            return True
+
+        # If we're at a space after a complete command and the command has arguments
+        # but no subcommands, we're in argument context
+        if (
+            parsed.ends_with_space
+            and ctx.command
+            and not ctx.command.children
+            and self._command_has_parameters(ctx.command)
+        ):
+            return True
+
+        # If we have a current word that doesn't match any subcommand names
+        # but we have a valid command with parameters, we're likely in argument context
+        if (
+            ctx.command
+            and parsed.current_word
+            and not parsed.current_word.startswith("--")
+            and ctx.command.children
+            and not any(
+                self._matches_fuzzy(parsed.current_word, name)
+                for name in ctx.command.children.keys()
+            )
+            and self._command_has_parameters(ctx.command)
+        ):
+            return True
+
+        return False
+
+    def _command_has_parameters(self, command: CommandInfo) -> bool:
+        """Check if a command has any parameters that can be completed."""
+        try:
+            sig = inspect.signature(command.func)
+            # Filter out **kwargs for now since we don't handle them
+            params = [p for p in sig.parameters.values() if p.kind != p.VAR_KEYWORD]
+            return len(params) > 0
+        except (ValueError, TypeError):
+            return False
 
     def _should_complete_subcommands(self, ctx: CompletionContext) -> bool:
         command = ctx.command
-        parsed = ctx.parsed
 
         # no subcommands available
         if not command or not command.children:
             return False
 
-        # if we already have arguments or flags, don't show subcommands
-        if parsed.arg_parts or any(word.startswith("--") for word in parsed.arg_parts):
-            return False
-
-        # if current word is a flag, don't show subcommands
-        if parsed.current_word.startswith("--"):
+        # don't show subcommands if we're in clear argument context
+        if self._is_in_argument_context(ctx):
             return False
 
         # if we're at a space after command with no args, show both args and subcommands
@@ -224,6 +267,10 @@ class CommandCompleter(Completer):
         if not command or not command.children:
             return
 
+        # Only show subcommands if we should
+        if not self._should_complete_subcommands(ctx):
+            return
+
         for name, cmd in command.children.items():
             if self._matches_fuzzy(current_word, name):
                 yield self._create_completion(
@@ -237,6 +284,7 @@ class CommandCompleter(Completer):
         sig = inspect.signature(ctx.command.func)
 
         # skip commands with **kwargs for now
+        # TODO: implement **kwargs
         if any(p.kind == p.VAR_KEYWORD for p in sig.parameters.values()):
             return
 
