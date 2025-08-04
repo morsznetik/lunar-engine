@@ -1,5 +1,5 @@
-from typing import Self, override, Final
-from types import TracebackType
+from typing import Self, override, Final, get_origin, get_args, Literal
+from types import NoneType, TracebackType, UnionType
 from collections.abc import Generator, Iterator
 from dataclasses import dataclass
 from difflib import SequenceMatcher
@@ -80,9 +80,9 @@ class CommandCompleter(Completer):
 
         parsed = self._parse_command_line(text)
         command = self._resolve_command(parsed.command_parts)
-        context = self._build_completion_context(command, parsed)
+        ctx = self._build_completion_ctx(command, parsed)
 
-        yield from self._generate_completions(context)
+        yield from self._generate_completions(ctx)
 
     # ============================================================================
     # PARSING & RESOLUTION
@@ -145,7 +145,7 @@ class CommandCompleter(Completer):
 
         return current_cmd
 
-    def _build_completion_context(
+    def _build_completion_ctx(
         self, command: CommandInfo | None, parsed: ParsedCommand
     ) -> CompletionContext:
         used_keyword_params: set[str] = set()
@@ -165,29 +165,31 @@ class CommandCompleter(Completer):
     # COMPLETION GENERATION
     # ============================================================================
 
-    def _generate_completions(self, context: CompletionContext) -> Iterator[Completion]:
-        if not context.command:
+    def _generate_completions(self, ctx: CompletionContext) -> Iterator[Completion]:
+        if not ctx.command:
             # only show root commands if:
             # 1. we have no command parts at all, OR
             # 2. we have exactly 1 command part AND we're not at a space after it
-            if len(context.parsed.command_parts) == 0 or (
-                len(context.parsed.command_parts) == 1
-                and not context.parsed.ends_with_space
+            if len(ctx.parsed.command_parts) == 0 or (
+                len(ctx.parsed.command_parts) == 1 and not ctx.parsed.ends_with_space
             ):
-                yield from self._complete_root_commands(context.parsed.current_word)
+                yield from self._complete_root_commands(ctx.parsed.current_word)
             # if not, show nothing for invalid command paths
             return
 
-        # try to complete arguments first
-        yield from self._complete_arguments(context)
+        # try to complete type-specific values first
+        yield from self._complete_type_values(ctx)
+
+        # try to complete arguments
+        yield from self._complete_arguments(ctx)
 
         # then show subcommands only if we haven't started typing arguments
-        if self._should_complete_subcommands(context):
-            yield from self._complete_subcommands(context)
+        if self._should_complete_subcommands(ctx):
+            yield from self._complete_subcommands(ctx)
 
-    def _should_complete_subcommands(self, context: CompletionContext) -> bool:
-        command = context.command
-        parsed = context.parsed
+    def _should_complete_subcommands(self, ctx: CompletionContext) -> bool:
+        command = ctx.command
+        parsed = ctx.parsed
 
         # no subcommands available
         if not command or not command.children:
@@ -215,9 +217,9 @@ class CommandCompleter(Completer):
                         display_meta=cmd_info.description or "command",
                     )
 
-    def _complete_subcommands(self, context: CompletionContext) -> Iterator[Completion]:
-        command = context.command
-        current_word = context.parsed.current_word
+    def _complete_subcommands(self, ctx: CompletionContext) -> Iterator[Completion]:
+        command = ctx.command
+        current_word = ctx.parsed.current_word
 
         if not command or not command.children:
             return
@@ -228,11 +230,11 @@ class CommandCompleter(Completer):
                     name, current_word, display_meta=cmd.description or "subcommand"
                 )
 
-    def _complete_arguments(self, context: CompletionContext) -> Iterator[Completion]:
-        if not context.command:
+    def _complete_arguments(self, ctx: CompletionContext) -> Iterator[Completion]:
+        if not ctx.command:
             return
 
-        sig = inspect.signature(context.command.func)
+        sig = inspect.signature(ctx.command.func)
 
         # skip commands with **kwargs for now
         if any(p.kind == p.VAR_KEYWORD for p in sig.parameters.values()):
@@ -245,22 +247,133 @@ class CommandCompleter(Completer):
 
         for param in params:
             completion = self._create_parameter_completion(
-                param, context, positional_params
+                param, ctx, positional_params
             )
             if completion:
                 yield completion
 
+    def _complete_type_values(self, ctx: CompletionContext) -> Iterator[Completion]:
+        if not ctx.command:
+            return
+
+        sig = inspect.signature(ctx.command.func)
+        current_word = ctx.parsed.current_word
+
+        # skip commands with **kwargs for now
+        # TODO: implement **kwargs
+        if any(p.kind == p.VAR_KEYWORD for p in sig.parameters.values()):
+            return
+
+        params = list(sig.parameters.values())
+        positional_params = [
+            p for p in params if p.kind in (p.POSITIONAL_ONLY, p.POSITIONAL_OR_KEYWORD)
+        ]
+
+        # determine which parameter we're completing based on position and ctx
+        target_param = self._determine_target_parameter(ctx, params, positional_params)
+
+        if target_param:
+            yield from self._get_type_value_completions(target_param, current_word)
+
+    def _determine_target_parameter(
+        self,
+        ctx: CompletionContext,
+        params: list[inspect.Parameter],
+        positional_params: list[inspect.Parameter],
+    ) -> inspect.Parameter | None:
+        """Determine which parameter we're currently trying to complete a value for"""
+        current_word = ctx.parsed.current_word
+
+        # if current word starts with --, we're not completing a value
+        if current_word.startswith("--"):
+            return None
+
+        # if we have positional arguments, determine which positional parameter we're on
+        if ctx.positional_count < len(positional_params):
+            return positional_params[ctx.positional_count]
+
+        # check if we're completing a value after a keyword argument
+        # look at the last argument to see if it was a --flag without a value
+        if ctx.parsed.arg_parts:
+            last_arg = ctx.parsed.arg_parts[-1]
+            if last_arg.startswith("--") and "=" not in last_arg:
+                # find the parameter for this flag
+                param_name = last_arg.lstrip("-")
+                for param in params:
+                    if param.name == param_name and param.kind == param.KEYWORD_ONLY:
+                        return param
+
+        return None
+
+    def _get_type_value_completions(
+        self, param: inspect.Parameter, current_word: str
+    ) -> Iterator[Completion]:
+        """Generate completions for specific parameter types"""
+        annotation = param.annotation  # pyright: ignore[reportAny]
+
+        if annotation == inspect.Parameter.empty:
+            return
+
+        # handle Literal types
+        if get_origin(annotation) is Literal:  # pyright: ignore[reportAny]
+            literal_values = get_args(annotation)
+            for value in literal_values:  # pyright: ignore[reportAny]
+                value_str = str(value)  # pyright: ignore[reportAny]
+                if self._matches_fuzzy(current_word, value_str):
+                    yield self._create_completion(
+                        value_str,
+                        current_word,
+                        display_meta=f"literal value ({type(value).__name__})",  # pyright: ignore[reportAny]
+                    )
+            return
+
+        # handle bool type
+        if annotation is bool:
+            for bool_val in ["True", "False"]:
+                if self._matches_fuzzy(current_word, bool_val):
+                    yield self._create_completion(
+                        bool_val, current_word, display_meta="boolean value"
+                    )
+            return
+
+        # handle None
+        if annotation is NoneType:
+            if self._matches_fuzzy(current_word, "None"):
+                yield self._create_completion(
+                    "None", current_word, display_meta="None value"
+                )
+            return
+
+        # handle Union types that include None or bool
+        if isinstance(annotation, UnionType):
+            # this is a Union type, check its args
+            args = get_args(annotation)
+
+            # check if None is in the union
+            if NoneType in args:
+                if self._matches_fuzzy(current_word, "None"):
+                    yield self._create_completion(
+                        "None", current_word, display_meta="None value (optional)"
+                    )
+
+            # check if bool is in the union
+            if bool in args:
+                for bool_val in ["True", "False"]:
+                    if self._matches_fuzzy(current_word, bool_val):
+                        yield self._create_completion(
+                            bool_val,
+                            current_word,
+                            display_meta="boolean value (optional)",
+                        )
+
     def _create_parameter_completion(
         self,
         param: inspect.Parameter,
-        context: CompletionContext,
+        ctx: CompletionContext,
         positional_params: list[inspect.Parameter],
     ) -> Completion | None:
         # skip already used keyword parameters
-        if (
-            param.name in context.used_keyword_params
-            and param.kind != param.VAR_POSITIONAL
-        ):
+        if param.name in ctx.used_keyword_params and param.kind != param.VAR_POSITIONAL:
             return None
 
         # handle different parameter types
@@ -274,13 +387,13 @@ class CommandCompleter(Completer):
 
         else:
             # regular positional parameter
-            if not self._should_suggest_positional(param, context, positional_params):
+            if not self._should_suggest_positional(param, ctx, positional_params):
                 return None
             complete_text = param.name
             display_text = complete_text
 
         # check fuzzy match
-        if not self._matches_fuzzy(context.parsed.current_word, complete_text):
+        if not self._matches_fuzzy(ctx.parsed.current_word, complete_text):
             return None
 
         # build display metadata
@@ -295,7 +408,7 @@ class CommandCompleter(Completer):
 
         return self._create_completion(
             complete_text,
-            context.parsed.current_word,  # what the user typed
+            ctx.parsed.current_word,  # what the user typed
             display=display_text,
             display_meta=type_str,
         )
@@ -303,15 +416,15 @@ class CommandCompleter(Completer):
     def _should_suggest_positional(
         self,
         param: inspect.Parameter,
-        context: CompletionContext,
+        ctx: CompletionContext,
         positional_params: list[inspect.Parameter],
     ) -> bool:
-        if not self._strict_positional or context.positional_count == 0:
+        if not self._strict_positional or ctx.positional_count == 0:
             return True
 
         try:
             param_index = positional_params.index(param)
-            return param_index == context.positional_count
+            return param_index == ctx.positional_count
         except ValueError:
             return False
 
