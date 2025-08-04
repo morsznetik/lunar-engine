@@ -3,6 +3,7 @@ from types import NoneType, TracebackType, UnionType
 from collections.abc import Generator, Iterator
 from dataclasses import dataclass
 from difflib import SequenceMatcher
+from enum import Enum
 from prompt_toolkit import PromptSession
 from prompt_toolkit.completion import Completer, Completion
 from prompt_toolkit.history import History, InMemoryHistory
@@ -366,12 +367,33 @@ class CommandCompleter(Completer):
         if get_origin(annotation) is Literal:  # pyright: ignore[reportAny]
             literal_values = get_args(annotation)
             for value in literal_values:  # pyright: ignore[reportAny]
-                value_str = str(value)  # pyright: ignore[reportAny]
+                if isinstance(value, Enum):
+                    value_str = value.name
+                    display_meta = (
+                        f"{param.name} literal value ({value.__class__.__name__})"
+                    )
+                else:
+                    value_str = str(value)  # pyright: ignore[reportAny]
+                    display_meta = (
+                        f"{param.name} literal value ({type(value).__name__})"  # pyright: ignore[reportAny]
+                    )
+
                 if self._matches_fuzzy(current_word, value_str):
                     yield self._create_completion(
                         value_str,
                         current_word,
-                        display_meta=f"literal value ({type(value).__name__})",  # pyright: ignore[reportAny]
+                        display_meta=display_meta,
+                    )
+            return
+
+        # handle Enum types
+        if isinstance(annotation, type) and issubclass(annotation, Enum):
+            for name, _ in annotation._member_map_.items():
+                if self._matches_fuzzy(current_word, name):
+                    yield self._create_completion(
+                        name,
+                        current_word,
+                        display_meta=f"{param.name}: Enum member",
                     )
             return
 

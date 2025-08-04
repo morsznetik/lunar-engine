@@ -27,13 +27,13 @@ type UnknownCommandHandler = Callable[[str], None]
 type InterruptHandler = Callable[[], None]
 type CommandInterruptHandler = Callable[[], None]
 type TypeTransformErrorHandler = Callable[
-    [str, str, str | None, str, ValueError | None], None
+    [str, str, str | None, list[str], ValueError | None], None
 ]
 type ArgumentCountErrorHandler = Callable[[int, int, int], None]
 type Handler = Callable[..., None]
 
 type TransformedArgs = (
-    int | float | str | bool | bytes | list[TransformedArgs] | NoneType
+    int | float | str | bool | bytes | list[TransformedArgs] | NoneType | Enum
 )
 
 
@@ -73,7 +73,7 @@ def _default_type_transform_error(
     arg: str,
     arg_name: str,
     arg_type: str | None = None,
-    options: set[str] | None = None,
+    options: list[str] | None = None,
     e: ValueError | None = None,
 ) -> None:
     msg = f"For argument {arg_name!r}, could not interpret {arg!r}"
@@ -482,7 +482,10 @@ class Shell:
             # try to match the argument with literal values
             # ignore Any since they can be any type and that is fine
             for literal_value in literal_values:  # pyright: ignore[reportAny]
-                if str(literal_value) == arg:  # pyright: ignore[reportAny]
+                if isinstance(literal_value, Enum):
+                    if literal_value.name == arg:
+                        return literal_value
+                elif str(literal_value) == arg:  # pyright: ignore[reportAny]
                     return literal_value  # pyright: ignore[reportAny]
                 # also try case-insensitive comparison for string literals
                 if (
@@ -492,15 +495,32 @@ class Shell:
                     return literal_value
 
             # no match
-            literal_options = ", ".join(f'"{v}"' for v in literal_values)  # pyright: ignore[reportAny]
+            literal_options_list = [
+                v.name if isinstance(v, Enum) else str(v)  # pyright: ignore[reportAny]
+                for v in literal_values  # pyright: ignore[reportAny]
+            ]
             if not suppress_error:
                 self._handlers[Event.TYPE_TRANSFORM_ERROR](
                     arg,
                     arg_name,
                     None,
-                    literal_options,
+                    literal_options_list,
                 )
             raise InvalidArgumentTypeException
+
+        elif isinstance(arg_type, type) and issubclass(arg_type, Enum):
+            try:
+                return arg_type[arg]
+            except KeyError as e:
+                if not suppress_error:
+                    self._handlers[Event.TYPE_TRANSFORM_ERROR](
+                        arg,
+                        arg_name,
+                        arg_type.__name__,
+                        set(arg_type._member_map_.keys()),
+                        e,
+                    )
+                raise InvalidArgumentTypeException from e
 
         if arg_type is int:
             try:

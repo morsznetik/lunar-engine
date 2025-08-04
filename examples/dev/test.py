@@ -2,7 +2,7 @@
 
 from prompt_toolkit.styles import Style
 from lunar_engine.command import command
-from lunar_engine.shell import Shell, handlers
+from lunar_engine.shell import Event, Shell, handlers
 from lunar_engine.prompt import Prompt
 from typing import Literal
 
@@ -56,6 +56,12 @@ def process_data(
 ) -> None:
     """Processes a list of data with a given priority."""
     print(f"Processing data: {data} with priority {priority}")
+
+
+@command()
+def raise_with_event(event: Event) -> None:
+    """Raises an exception with a given event."""
+    print(f"Throwing {event}")
 
 
 @handlers.on_unknown_command

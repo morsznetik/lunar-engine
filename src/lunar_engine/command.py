@@ -2,8 +2,9 @@ import inspect
 import weakref
 from collections.abc import Iterator, Callable
 from dataclasses import dataclass, field
+from enum import Enum
 from typing import Any, Final, get_type_hints, Self, get_origin, get_args, Literal
-from types import NoneType
+from types import NoneType, UnionType
 from .exceptions import (
     UntypedCommandException,
     InvalidArgumentTypeException,
@@ -22,15 +23,20 @@ def _is_allowed_type(type_hint: Any) -> bool:  # pyright: ignore[reportAny]
 
     origin = get_origin(type_hint)  # pyright: ignore[reportAny]
 
-    # if no origin, it's not a generic type, so check if it's a base type
+    # if no origin, it's not a generic type, so check if it's a base type or an Enum
     if origin is None:
-        return type_hint in allowed_base_types
+        return type_hint in allowed_base_types or (
+            isinstance(type_hint, type) and issubclass(type_hint, Enum)
+        )
 
     # handle Literal types specifically
     if origin is Literal:
-        # all Literal values should be of simple builtin types
+        # all Literal values should be of simple builtin types or Enum members
         args = get_args(type_hint)
-        return all(type(arg) in allowed_base_types for arg in args)  # pyright: ignore[reportAny]
+        return all(
+            type(arg) in allowed_base_types or isinstance(arg, Enum)  # pyright: ignore[reportAny]
+            for arg in args  # pyright: ignore[reportAny]
+        )
 
     # handle list types
     if origin is list:
@@ -39,8 +45,7 @@ def _is_allowed_type(type_hint: Any) -> bool:  # pyright: ignore[reportAny]
             return False
         return all(_is_allowed_type(arg) for arg in args)  # pyright: ignore[reportAny]
 
-    # unions modern python syntax
-    if hasattr(type_hint, "__or__"):  # pyright: ignore[reportAny]
+    if isinstance(type_hint, UnionType):
         args = get_args(type_hint)
         if args:
             return all(_is_allowed_type(arg) for arg in args)  # pyright: ignore[reportAny]
