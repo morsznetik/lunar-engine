@@ -1,6 +1,8 @@
 # Lunar Engine
 
 [![CI](https://github.com/morsznetik/lunar-engine/actions/workflows/ci.yml/badge.svg)](https://github.com/morsznetik/lunar-engine/actions/workflows/ci.yml)
+[![codecov](https://codecov.io/gh/morsznetik/lunar-engine/graph/badge.svg?token=SSGLLM4POZ)](https://codecov.io/gh/morsznetik/lunar-engine)
+![GitHub commit activity](https://img.shields.io/github/commit-activity/w/morsznetik/lunar-engine)
 [![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
