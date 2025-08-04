@@ -118,7 +118,7 @@ class HandlerRegistry:
         """Decorator for unexpected error event."""
 
         def decorator(f: UnexpectedExceptionHandler) -> UnexpectedExceptionHandler:
-            self._handlers[Event.UNKNOWN_COMMAND] = f
+            self._handlers[Event.UNEXPECTED_EXCEPTION] = f
             return f
 
         if func is not None:
