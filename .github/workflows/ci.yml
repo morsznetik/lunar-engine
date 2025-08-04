@@ -15,6 +15,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
       - name: Setup uv
         uses: astral-sh/setup-uv@v6
         with:
@@ -48,12 +50,12 @@ jobs:
       - name: Run tests
         run: |
           if find tests -type f | grep -q .; then
-            uv run pytest --cov=lunar_engine --cov-report=term --cov-report=html
+            uv run pytest --cov --cov-branch --cov-report=xml
           else
             exit 0
           fi
-      - name: Upload HTML coverage report
-        uses: actions/upload-artifact@v4
+      - name: Upload coverage reports to Codecov
+        uses: codecov/codecov-action@v5
         with:
-          name: htmlcov
-          path: htmlcov/
+          token: ${{ secrets.CODECOV_TOKEN }}
+          slug: morsznetik/pyPlayer
