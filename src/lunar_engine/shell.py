@@ -620,6 +620,7 @@ class Shell:
                 p
                 for p in params
                 if p.default == inspect.Parameter.empty  # pyright: ignore[reportAny]
+                and p.kind != Parameter.VAR_POSITIONAL
             ]
             num_required = len(required_params)
 
@@ -632,18 +633,38 @@ class Shell:
                         break
                 effective_args.append(arg)
 
+            has_var_positional = any(p.kind == Parameter.VAR_POSITIONAL for p in params)
+
             # validate count
-            if len(effective_args) < num_required or len(effective_args) > len(params):
+            if len(effective_args) < num_required or (
+                not has_var_positional and len(effective_args) > len(params)
+            ):
                 self._handlers[Event.ARGUMENT_COUNT_ERROR](
                     len(effective_args), num_required, len(params)
                 )
                 return
 
             if effective_args:
+                types_to_transform = param_type_list[: len(effective_args)]
+                names_to_transform = param_names[: len(effective_args)]
+
+                if has_var_positional:
+                    # subtract 1 for the *args parameter itself
+                    num_non_var = len(param_type_list) - 1
+
+                    var_type = param_type_list[-1]  # pyright: ignore[reportAny]
+                    types_to_transform = list(param_type_list[:-1])
+                    num_var_args_provided = len(effective_args) - num_non_var
+                    types_to_transform.extend([var_type] * num_var_args_provided)
+
+                    var_name = param_names[-1]
+                    names_to_transform = list(param_names[:-1])
+                    names_to_transform.extend([var_name] * num_var_args_provided)
+
                 transformed_args = self._transform_types(
-                    param_type_list[: len(effective_args)],
+                    types_to_transform,
                     effective_args,
-                    arg_names=param_names[: len(effective_args)],
+                    arg_names=names_to_transform,
                 )
             else:
                 if num_required > 0:
