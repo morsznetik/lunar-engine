@@ -1,7 +1,7 @@
 [project]
 name = "lunar-engine"
 version = "0.4.0"
-description = "Add your description here"
+description = 'A fully type-safe, DX-first, "shell-like" CLI tool framework, for the newest versions of Python.'
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
