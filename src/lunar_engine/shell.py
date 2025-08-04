@@ -25,6 +25,7 @@ type UnexpectedExceptionHandler = Callable[[Exception], None]
 type CommandExceptionHandler = Callable[[Exception], None]
 type UnknownCommandHandler = Callable[[str], None]
 type InterruptHandler = Callable[[], None]
+type CommandInterruptHandler = Callable[[], None]
 type TypeTransformErrorHandler = Callable[
     [str, str, str | None, str, ValueError | None], None
 ]
@@ -43,6 +44,7 @@ class Event(Enum):
     INTERRUPT = auto()
     TYPE_TRANSFORM_ERROR = auto()
     ARGUMENT_COUNT_ERROR = auto()
+    COMMAND_INTERRUPT = auto()
 
 
 def _default_unexpected_exception(e: Exception) -> None:
@@ -61,6 +63,10 @@ def _default_unknown_command(name: str) -> None:
 
 def _default_interrupt() -> None:
     print("Interrupted.")
+
+
+def _default_command_interrupt() -> None:
+    print("\nCommand interrupted.")
 
 
 def _default_type_transform_error(
@@ -104,20 +110,18 @@ class HandlerRegistry:
             Event.COMMAND_EXCEPTION: _default_command_exception,
             Event.TYPE_TRANSFORM_ERROR: _default_type_transform_error,
             Event.ARGUMENT_COUNT_ERROR: _default_argument_error,
+            Event.COMMAND_INTERRUPT: _default_command_interrupt,
         }
 
     def __getitem__(self, event: Event) -> Handler:
         return self._handlers[event]
 
-    def on_unexpected_exception(
-        self, func: UnexpectedExceptionHandler | None = None
-    ) -> (
-        UnexpectedExceptionHandler
-        | Callable[[UnexpectedExceptionHandler], UnexpectedExceptionHandler]
-    ):
+    def on_unexpected_exception[T: UnexpectedExceptionHandler](
+        self, func: T | None = None
+    ) -> T | Callable[[T], T]:
         """Decorator for unexpected error event."""
 
-        def decorator(f: UnexpectedExceptionHandler) -> UnexpectedExceptionHandler:
+        def decorator(f: T) -> T:
             self._handlers[Event.UNEXPECTED_EXCEPTION] = f
             return f
 
@@ -125,15 +129,12 @@ class HandlerRegistry:
             return decorator(func)
         return decorator
 
-    def on_command_exception(
-        self, func: CommandExceptionHandler | None = None
-    ) -> (
-        CommandExceptionHandler
-        | Callable[[CommandExceptionHandler], CommandExceptionHandler]
-    ):
+    def on_command_exception[T: CommandExceptionHandler](
+        self, func: T | None = None
+    ) -> T | Callable[[T], T]:
         """Decorator for command error event."""
 
-        def decorator(f: CommandExceptionHandler) -> CommandExceptionHandler:
+        def decorator(f: T) -> T:
             self._handlers[Event.COMMAND_EXCEPTION] = f
             return f
 
@@ -141,14 +142,12 @@ class HandlerRegistry:
             return decorator(func)
         return decorator
 
-    def on_unknown_command(
-        self, func: UnknownCommandHandler | None = None
-    ) -> (
-        UnknownCommandHandler | Callable[[UnknownCommandHandler], UnknownCommandHandler]
-    ):
+    def on_unknown_command[T: UnknownCommandHandler](
+        self, func: T | None = None
+    ) -> T | Callable[[T], T]:
         """Decorator for unknown command event."""
 
-        def decorator(f: UnknownCommandHandler) -> UnknownCommandHandler:
+        def decorator(f: T) -> T:
             self._handlers[Event.UNKNOWN_COMMAND] = f
             return f
 
@@ -156,12 +155,12 @@ class HandlerRegistry:
             return decorator(func)
         return decorator
 
-    def on_interrupt(
-        self, func: InterruptHandler | None = None
-    ) -> InterruptHandler | Callable[[InterruptHandler], InterruptHandler]:
+    def on_interrupt[T: InterruptHandler](
+        self, func: T | None = None
+    ) -> T | Callable[[T], T]:
         """Decorator for interrupt event."""
 
-        def decorator(f: InterruptHandler) -> InterruptHandler:
+        def decorator(f: T) -> T:
             self._handlers[Event.INTERRUPT] = f
             return f
 
@@ -169,15 +168,25 @@ class HandlerRegistry:
             return decorator(func)
         return decorator
 
-    def on_type_transform_error(
-        self, func: TypeTransformErrorHandler | None = None
-    ) -> (
-        TypeTransformErrorHandler
-        | Callable[[TypeTransformErrorHandler], TypeTransformErrorHandler]
-    ):
+    def on_command_interrupt[T: CommandInterruptHandler](
+        self, func: T | None = None
+    ) -> T | Callable[[T], T]:
+        """Decorator for command interrupt event."""
+
+        def decorator(f: T) -> T:
+            self._handlers[Event.COMMAND_INTERRUPT] = f
+            return f
+
+        if func is not None:
+            return decorator(func)
+        return decorator
+
+    def on_type_transform_error[T: TypeTransformErrorHandler](
+        self, func: T | None = None
+    ) -> T | Callable[[T], T]:
         """Decorator for type transform error event."""
 
-        def decorator(f: TypeTransformErrorHandler) -> TypeTransformErrorHandler:
+        def decorator(f: T) -> T:
             self._handlers[Event.TYPE_TRANSFORM_ERROR] = f
             return f
 
@@ -185,15 +194,12 @@ class HandlerRegistry:
             return decorator(func)
         return decorator
 
-    def on_argument_count_error(
-        self, func: ArgumentCountErrorHandler | None = None
-    ) -> (
-        ArgumentCountErrorHandler
-        | Callable[[ArgumentCountErrorHandler], ArgumentCountErrorHandler]
-    ):
+    def on_argument_count_error[T: ArgumentCountErrorHandler](
+        self, func: T | None = None
+    ) -> T | Callable[[T], T]:
         """Decorator for argument count error event."""
 
-        def decorator(f: ArgumentCountErrorHandler) -> ArgumentCountErrorHandler:
+        def decorator(f: T) -> T:
             self._handlers[Event.ARGUMENT_COUNT_ERROR] = f
             return f
 
@@ -649,6 +655,9 @@ class Shell:
 
             try:
                 cmd_info.func(*transformed_args)
+            except KeyboardInterrupt:
+                self._handlers[Event.COMMAND_INTERRUPT]()
+                return
             except Exception as e:
                 self._handlers[Event.COMMAND_EXCEPTION](e)
                 return
