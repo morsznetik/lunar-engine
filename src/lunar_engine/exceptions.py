@@ -14,7 +14,7 @@ class PromptException(LunarEngineException):
     pass
 
 
-class InterruptException(PromptException, StopIteration):
+class InterruptException(PromptException):
     """
     Exception raised when the something interrupts the prompt loop.
     This is typically raised on KeyboardInterrupt or EOFError,
