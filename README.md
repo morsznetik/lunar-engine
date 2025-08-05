@@ -59,6 +59,43 @@ registry = get_registry() # global command registry
 registry.register(manual) # register the command yourself
 ```
 
+#### Keyword Arguments (Flags)
+
+Lunar Engine supports keyword-only arguments, which are treated as flags (e.g., `--my-flag`).
+
+Arguments that take a value are passed using a space separator (e.g., `--name Ash`). Boolean flags act as switches; their presence means `True`.
+
+```python
+from typing import Optional
+
+@command()
+def greet(*, name: str, formal: bool = False, title: Optional[str] = None):
+    """
+    Greets a person.
+    """
+    message = "Hello" if not formal else "Greetings"
+    if title:
+        message += f", {title}"
+    message += f" {name}!"
+    print(message)
+
+```
+
+You can run this from the interactive shell or the command line:
+
+```shell
+# Interactive shell
+>> greet --name "John Doe" --formal
+Greetings, John Doe!
+
+>> greet --name Jane --title Dr.
+Hello, Dr. Jane!
+
+# From your system's command line
+$ python your_app.py greet --name "John Doe" --formal
+Greetings, John Doe!
+```
+
 **Note:** `command` is an alias of `get_registry().command` which is the global command registry.
 
 ### Prompt
