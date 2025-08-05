@@ -92,6 +92,11 @@ def raise_with_event(event: Event) -> None:
     print(f"Throwing {event}")
 
 
+@command()
+def factory(*, a: bool | str) -> None:
+    print(f"{a=}")
+
+
 @handlers.on_unknown_command
 def unknown_command(name: str) -> None:
     """Custom handler for unknown commands."""

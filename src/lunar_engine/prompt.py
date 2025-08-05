@@ -1,4 +1,4 @@
-from typing import Self, override, Final, get_origin, get_args, Literal
+from typing import Self, override, Final, get_origin, get_args, Literal, cast
 from types import NoneType, TracebackType, UnionType
 from collections.abc import Generator, Iterator
 from dataclasses import dataclass
@@ -367,15 +367,16 @@ class CommandCompleter(Completer):
         if get_origin(annotation) is Literal:  # pyright: ignore[reportAny]
             literal_values = get_args(annotation)
             for value in literal_values:  # pyright: ignore[reportAny]
+                value = cast(object, value)
                 if isinstance(value, Enum):
                     value_str = value.name
                     display_meta = (
                         f"{param.name} literal value ({value.__class__.__name__})"
                     )
                 else:
-                    value_str = str(value)  # pyright: ignore[reportAny]
+                    value_str = str(value)
                     display_meta = (
-                        f"{param.name} literal value ({type(value).__name__})"  # pyright: ignore[reportAny]
+                        f"{param.name} literal value ({type(value).__name__})"
                     )
 
                 if self._matches_fuzzy(current_word, value_str):
@@ -399,7 +400,7 @@ class CommandCompleter(Completer):
 
         # handle bool type
         if annotation is bool:
-            for bool_val in ["True", "False"]:
+            for bool_val in ("True", "False"):
                 if self._matches_fuzzy(current_word, bool_val):
                     yield self._create_completion(
                         bool_val, current_word, display_meta="boolean value"
@@ -446,6 +447,9 @@ class CommandCompleter(Completer):
         if param.name in ctx.used_keyword_params and param.kind != param.VAR_POSITIONAL:
             return None
 
+        default = param.default  # pyright: ignore[reportAny]
+        is_optional = default != inspect.Parameter.empty  # pyright: ignore[reportAny]
+
         # handle different parameter types
         if param.kind == param.KEYWORD_ONLY:
             complete_text = f"--{param.name}"
@@ -455,22 +459,35 @@ class CommandCompleter(Completer):
             complete_text = param.name.lstrip("*")
             display_text = f"*{complete_text}"
 
-        else:
+        else:  # POSITIONAL_ONLY, POSITIONAL_OR_KEYWORD
             # regular positional parameter
             if not self._should_suggest_positional(param, ctx, positional_params):
                 return None
-            complete_text = param.name
-            display_text = complete_text
+
+            if is_optional:
+                if isinstance(default, Enum):
+                    complete_text = default.name
+                else:
+                    complete_text = str(cast(object, default))
+                display_text = param.name  # Show param name in display
+            else:
+                complete_text = param.name
+                display_text = complete_text
 
         # check fuzzy match
-        if not self._matches_fuzzy(ctx.parsed.current_word, complete_text):
+        # For optional positional, match against default value or param name
+        if is_optional and param.kind not in (param.KEYWORD_ONLY, param.VAR_POSITIONAL):
+            if not (
+                self._matches_fuzzy(ctx.parsed.current_word, complete_text)
+                or self._matches_fuzzy(ctx.parsed.current_word, param.name)
+            ):
+                return None
+        elif not self._matches_fuzzy(ctx.parsed.current_word, complete_text):
             return None
 
         # build display metadata
-        # ignore default type because the type checker cannot infer it statically
-        default = param.default  # pyright: ignore[reportAny]
         type_str = self._format_parameter_type(param)
-        if default != inspect.Parameter.empty:
+        if is_optional:
             type_str += f" = {default!r}"
             display_text += " (optional)"
         elif "| None" in type_str:
