@@ -5,15 +5,43 @@ from lunar_engine.command import command
 from lunar_engine.shell import Event, Shell, handlers
 from lunar_engine.prompt import Prompt
 from typing import Literal
+from enum import Enum
+
+
+class Language(Enum):
+    ENGLISH = "english"
+    GERMAN = "german"
+    POLISH = "polish"
 
 
 @command()
-def greet(name: str, formal: bool = False) -> None:
-    """Greets the user."""
+def greet(
+    name: str,
+    formal: bool,
+    age: int,
+    tone: Literal["friendly", "neutral", "serious"],
+    hobbies: list[str] | None = None,
+    language: Language = Language.ENGLISH,
+) -> None:
+    greeting = ""
+
     if formal:
-        print(f"Hello, {name}. It is a pleasure to meet you.")
+        greeting = f"Hello, {name}. It is a pleasure to meet you."
     else:
-        print(f"Hey, {name}!")
+        greeting = f"Hey, {name}!"
+
+    if age:
+        greeting += f" You're {age}, nice!"
+
+    greeting += f" Your tone preference is '{tone}'."
+
+    if hobbies:
+        hobby_str = ", ".join(hobbies)
+        greeting += f" You enjoy: {hobby_str}."
+
+    greeting += f" Language selected: {language.value.capitalize()}."
+
+    print(greeting)
 
 
 @command()

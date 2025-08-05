@@ -29,7 +29,7 @@ type CommandInterruptHandler = Callable[[], None]
 type TypeTransformErrorHandler = Callable[
     [str, str, str | None, list[str], ValueError | None], None
 ]
-type ArgumentCountErrorHandler = Callable[[int, int, int], None]
+type ArgumentCountErrorHandler = Callable[[str, list[str] | None, int, int, int], None]
 type Handler = Callable[..., None]
 
 type TransformedArgs = (
@@ -86,14 +86,21 @@ def _default_type_transform_error(
         print(f"Expected one of: {', '.join(options)}")
 
 
-def _default_argument_error(provided: int, expected: int, total: int) -> None:
-    if provided < expected:
+def _default_argument_error(
+    command_name: str,
+    missing_args: list[str] | None,
+    provided: int,
+    _expected: int,
+    total: int,
+) -> None:
+    if missing_args is not None:
+        arg_list = "', '".join(missing_args)
         print(
-            f"Missing {expected - provided} required argument{'s' if expected - provided != 1 else ''}"
+            f"For command {command_name!r}, missing {len(missing_args)} required argument{'s' if len(missing_args) != 1 else ''}: {arg_list!r}"
         )
     else:
         print(
-            f"Got {provided - total} extra argument{'s' if provided - total != 1 else ''}"
+            f"For command {command_name!r}, got {provided - total} extra argument{'s' if provided - total != 1 else ''}"
         )
 
 
@@ -119,7 +126,11 @@ class HandlerRegistry:
     def on_unexpected_exception[T: UnexpectedExceptionHandler](
         self, func: T | None = None
     ) -> T | Callable[[T], T]:
-        """Decorator for unexpected error event."""
+        """Decorator for unexpected error event.
+
+        The decorated function will be called with the following arguments:
+            e: The exception that was caught.
+        """
 
         def decorator(f: T) -> T:
             self._handlers[Event.UNEXPECTED_EXCEPTION] = f
@@ -132,7 +143,11 @@ class HandlerRegistry:
     def on_command_exception[T: CommandExceptionHandler](
         self, func: T | None = None
     ) -> T | Callable[[T], T]:
-        """Decorator for command error event."""
+        """Decorator for command error event.
+
+        The decorated function will be called with the following arguments:
+            e: The exception that was caught.
+        """
 
         def decorator(f: T) -> T:
             self._handlers[Event.COMMAND_EXCEPTION] = f
@@ -145,7 +160,11 @@ class HandlerRegistry:
     def on_unknown_command[T: UnknownCommandHandler](
         self, func: T | None = None
     ) -> T | Callable[[T], T]:
-        """Decorator for unknown command event."""
+        """Decorator for unknown command event.
+
+        The decorated function will be called with the following arguments:
+            name: The name of the command that was not found.
+        """
 
         def decorator(f: T) -> T:
             self._handlers[Event.UNKNOWN_COMMAND] = f
@@ -158,7 +177,10 @@ class HandlerRegistry:
     def on_interrupt[T: InterruptHandler](
         self, func: T | None = None
     ) -> T | Callable[[T], T]:
-        """Decorator for interrupt event."""
+        """Decorator for interrupt event.
+
+        The decorated function will be called with no arguments.
+        """
 
         def decorator(f: T) -> T:
             self._handlers[Event.INTERRUPT] = f
@@ -171,7 +193,10 @@ class HandlerRegistry:
     def on_command_interrupt[T: CommandInterruptHandler](
         self, func: T | None = None
     ) -> T | Callable[[T], T]:
-        """Decorator for command interrupt event."""
+        """Decorator for command interrupt event.
+
+        The decorated function will be called with no arguments.
+        """
 
         def decorator(f: T) -> T:
             self._handlers[Event.COMMAND_INTERRUPT] = f
@@ -184,7 +209,15 @@ class HandlerRegistry:
     def on_type_transform_error[T: TypeTransformErrorHandler](
         self, func: T | None = None
     ) -> T | Callable[[T], T]:
-        """Decorator for type transform error event."""
+        """Decorator for type transform error event.
+
+        The decorated function will be called with the following arguments:
+            arg: The argument that failed to transform.
+            arg_name: The name of the argument that failed to transform.
+            arg_type: The expected type of the argument.
+            options: A list of possible values for the argument.
+            e: The exception that was caught.
+        """
 
         def decorator(f: T) -> T:
             self._handlers[Event.TYPE_TRANSFORM_ERROR] = f
@@ -197,7 +230,15 @@ class HandlerRegistry:
     def on_argument_count_error[T: ArgumentCountErrorHandler](
         self, func: T | None = None
     ) -> T | Callable[[T], T]:
-        """Decorator for argument count error event."""
+        """Decorator for argument count error event.
+
+        The decorated function will be called with the following arguments:
+            command_name: The name of the command that was called.
+            missing_args: A list of missing argument names, if any.
+            provided: The number of arguments provided.
+            expected: The number of required arguments.
+            total: The total number of arguments.
+        """
 
         def decorator(f: T) -> T:
             self._handlers[Event.ARGUMENT_COUNT_ERROR] = f
@@ -659,8 +700,17 @@ class Shell:
             if len(effective_args) < num_required or (
                 not has_var_positional and len(effective_args) > len(params)
             ):
+                missing_args = None
+                if len(effective_args) < num_required:
+                    missing_arg_names = [p.name for p in required_params]
+                    missing_args = missing_arg_names[len(effective_args) :]
+
                 self._handlers[Event.ARGUMENT_COUNT_ERROR](
-                    len(effective_args), num_required, len(params)
+                    cmd_info.name,
+                    missing_args,
+                    len(effective_args),
+                    num_required,
+                    len(params),
                 )
                 return
 
