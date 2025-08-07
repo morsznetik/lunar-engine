@@ -6,7 +6,9 @@
 [![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-A fully type-safe, DX-first, "shell-like" CLI tool framework, for the newest versions of Python!
+A fully type-safe[^1], focused on developer experience, CLI framework for building "shell-like" REPL style apps! Currently only supporting **Python 3.13+**
+
+Built on the idea that less is more, you can get started with **3 lines of code**.
 
 > [!IMPORTANT]
 > This project is in early development and very much a **work in progress.**
@@ -26,16 +28,15 @@ See [examples](https://github.com/morsznetik/lunar-engine/tree/master/examples) 
 A bare minimum Lunar Engine app could look like this.
 
 ```python
-prompt = Prompt(">> ") # shell prompt
-shell = Shell()
+from lunar_engine.shell import Shell
+from lunar_engine.command import command
 
 @command()
 def adder(a: int, b: int) -> None:
     """Adds two numbers."""
     print(f"{a} + {b} = {a+b}")
 
-shell.run(prompt)
-
+Shell().run()
 ```
 
 ### Commands
@@ -59,6 +60,8 @@ registry = get_registry() # global command registry
 registry.register(manual) # register the command yourself
 ```
 
+**Note:** `command` is an alias of `get_registry().command` which is the global command registry.
+
 #### Keyword Arguments (Flags)
 
 Lunar Engine supports keyword-only arguments, which are treated as flags (e.g., `--my-flag`).
@@ -78,7 +81,6 @@ def greet(*, name: str, formal: bool = False, title: Optional[str] = None):
         message += f", {title}"
     message += f" {name}!"
     print(message)
-
 ```
 
 You can run this from the interactive shell or the command line:
@@ -95,8 +97,6 @@ Hello, Dr. Jane!
 $ python your_app.py greet --name "John Doe" --formal
 Greetings, John Doe!
 ```
-
-**Note:** `command` is an alias of `get_registry().command` which is the global command registry.
 
 ### Prompt
 
@@ -127,7 +127,6 @@ def unknown_command(name: str) -> None:
 @handlers.on_interrupt
 def interrupt() -> None:
     print("App is terminating!")
-
 ```
 
 There are a few different handlers that you can hook into.
@@ -169,5 +168,6 @@ shell.run()
 prompt = Prompt(">> ")
 shell = Shell()
 shell.registry = my_registry # sets values automatically
-
 ```
+
+[^1]: As far as the Python type system allows. See [#6](https://github.com/morsznetik/lunar-engine/issues/6)
