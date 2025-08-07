@@ -683,6 +683,8 @@ class CommandCompleter(Completer):
         return SequenceMatcher(None, input_str, target).ratio() * 0.5
 
     def _matches_fuzzy(self, input_word: str, target: str) -> bool:
+        # for flags to match better
+        input_word = input_word.lower().removeprefix("--")
         if not input_word:
             return True
         return self._get_fuzzy_ratio(input_word, target) >= self._min_match_score
