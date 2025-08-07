@@ -273,7 +273,7 @@ class Shell:
 
     _registry: CommandRegistry
     _handlers: HandlerRegistry
-    _prompt: Prompt | None
+    _prompt: Prompt
     _instance: bool = False
 
     # cli args
@@ -307,7 +307,7 @@ class Shell:
         self._registry = registry or get_registry()
         # TODO: pls figure out a way to not use globals name wrangling
         self._handlers = handlers or globals()["handlers"]
-        self._prompt = None
+        self._prompt = Prompt("> ")
         self._cli_use_alt_buffer_flag = cli_use_alt_buffer_flag
 
         # cli arg flags
@@ -326,9 +326,7 @@ class Shell:
         """Set the command registry of the shell and the prompt's completer."""
         self._registry = registry
         # ensure the prompt completer's registry matches the Shell's to prevent faulty completions
-        if self._prompt is not None and isinstance(
-            self._prompt.completer, CommandCompleter
-        ):
+        if self._prompt and isinstance(self._prompt.completer, CommandCompleter):
             self._prompt.completer.registry = registry
 
     @property
@@ -340,6 +338,29 @@ class Shell:
     def handlers(self, handlers: HandlerRegistry) -> None:
         """Set the handlers registry."""
         self._handlers = handlers
+
+    @property
+    def prompt(self) -> Prompt:
+        """Get the current prompt."""
+        return self._prompt
+
+    @prompt.setter
+    def prompt(self, prompt: Prompt) -> None:
+        """
+        Set a new prompt for the shell.
+
+        If a prompt is currently running, it will be stopped and replaced with the new one.
+        If the new prompt is None, the shell will exit.
+        """
+        if prompt and not isinstance(prompt.completer, CommandCompleter):
+            raise TypeError(
+                f"Prompt must have a completer of type CommandCompleter, got {prompt.completer.__class__.__name__}"
+            )
+
+        if self._prompt:
+            self._prompt._running = False  # pyright: ignore[reportPrivateUsage]
+
+        self._prompt = prompt
 
     @classmethod
     def _enter_alt_buffer(cls) -> None:
@@ -746,6 +767,8 @@ class Shell:
 
             try:
                 cmd_info.func(*transformed_args)
+            except InterruptException:
+                raise
             except KeyboardInterrupt:
                 self._handlers[Event.COMMAND_INTERRUPT]()
                 return
@@ -761,9 +784,10 @@ class Shell:
 
     def run(
         self,
-        prompt: Prompt,
         /,
+        prompt: Prompt | None,
         start_text: str | None = None,
+        *,
         use_alt_buffer: bool = True,
     ) -> None:
         """
@@ -784,12 +808,7 @@ class Shell:
         if self._cli_use_alt_buffer is not None:
             use_alt_buffer = self._cli_use_alt_buffer
 
-        if not isinstance(prompt.completer, CommandCompleter):
-            raise TypeError(
-                f"Prompt must have a completer of type CommandCompleter, got {prompt.completer.__class__.__name__}"
-            )
-
-        self._prompt = prompt
+        self.prompt = prompt or self.prompt
 
         if use_alt_buffer:
             self._enter_alt_buffer()
@@ -798,14 +817,16 @@ class Shell:
             if start_text:
                 print(start_text)
 
-            with prompt:
-                try:
-                    for line in prompt:
-                        self._execute(line)
-                except InterruptException:
-                    if use_alt_buffer:
-                        self._leave_alt_buffer()
-                    self._handlers[Event.INTERRUPT]()
+            while self._prompt:
+                current_prompt = self._prompt
+                with current_prompt:
+                    try:
+                        for line in current_prompt:
+                            self._execute(line)
+                    except InterruptException:
+                        if use_alt_buffer:
+                            self._leave_alt_buffer()
+                        self._handlers[Event.INTERRUPT]()
         finally:
             if use_alt_buffer:
                 self._leave_alt_buffer()

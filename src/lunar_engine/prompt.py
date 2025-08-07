@@ -762,14 +762,14 @@ class Prompt:
     Supports context management and iteration. Evaluates as True while the prompt loop is active.
     """
 
-    _prompt: str
-    _rprompt: str | None
-    _completer: Final[Completer]
-    _auto_suggest: Final[AutoSuggest]
-    _history: Final[History]
-    _clipboard: Final[Clipboard]
-    _style: Final[BaseStyle | None]
-    _session: Final[PromptSession[str]]
+    _text: str
+    _rtext: str | None
+    _completer: Completer
+    _auto_suggest: AutoSuggest
+    _history: History
+    _clipboard: Clipboard
+    _style: BaseStyle | None
+    _session: PromptSession[str]
     _running: bool
     _in_context: bool
 
@@ -777,8 +777,8 @@ class Prompt:
         self,
         prompt: str,
         /,
-        *,
         rprompt: str | None = None,
+        *,
         completer: Completer | None = None,
         auto_suggest: AutoSuggest | None = None,
         history: History | None = None,
@@ -786,16 +786,16 @@ class Prompt:
         style: BaseStyle | None = None,
         session: PromptSession[str] | None = None,
     ) -> None:
-        self._prompt = prompt
-        self._rprompt = rprompt
+        self._text = prompt
+        self._rtext = rprompt
         self._completer = completer or CommandCompleter()
         self._history = history or InMemoryHistory()
         self._clipboard = clipboard or InMemoryClipboard()
         self._style = style
         self._auto_suggest = auto_suggest or AutoSuggestFromHistory()
         self._session = session or PromptSession(
-            message=self._prompt,
-            rprompt=self._rprompt,
+            message=self._text,
+            rprompt=self._rtext,
             completer=self._completer,
             history=self._history,
             clipboard=self._clipboard,
@@ -816,8 +816,67 @@ class Prompt:
         return self._running
 
     @property
+    def text(self) -> str:
+        return self._text
+
+    @text.setter
+    def text(self, value: str) -> None:
+        self._text = value
+        self._session.message = value
+
+    @property
+    def rtext(self) -> str | None:
+        return self._rtext
+
+    @rtext.setter
+    def rtext(self, value: str | None) -> None:
+        self._rtext = value
+        self._session.rprompt = value
+
+    @property
     def completer(self) -> Completer:
         return self._completer
+
+    @completer.setter
+    def completer(self, value: Completer) -> None:
+        self._completer = value
+        self._session.completer = value
+
+    @property
+    def history(self) -> History:
+        return self._history
+
+    @history.setter
+    def history(self, value: History) -> None:
+        self._history = value
+        self._session.history = value
+
+    @property
+    def clipboard(self) -> Clipboard:
+        return self._clipboard
+
+    @clipboard.setter
+    def clipboard(self, value: Clipboard) -> None:
+        self._clipboard = value
+        self._session.clipboard = value
+
+    @property
+    def style(self) -> BaseStyle | None:
+        return self._style
+
+    @style.setter
+    def style(self, value: BaseStyle | None) -> None:
+        self._style = value
+        self._session.style = value
+
+    @property
+    def auto_suggest(self) -> AutoSuggest:
+        return self._auto_suggest
+
+    @auto_suggest.setter
+    def auto_suggest(self, value: AutoSuggest) -> None:
+        self._auto_suggest = value
+        self._session.auto_suggest = value
 
     def get_input(self) -> str:
         """

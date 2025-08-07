@@ -14,6 +14,9 @@ class Language(Enum):
     POLISH = "polish"
 
 
+shell = Shell()
+
+
 @command()
 def greet(
     name: str,
@@ -97,6 +100,12 @@ def factory(*, a: bool | str) -> None:
     print(f"{a=}")
 
 
+@command()
+def set_prompt(prompt: str) -> None:
+    print(f"Setting prompt to '{prompt}'")
+    shell.prompt.text = prompt
+
+
 @handlers.on_unknown_command
 def unknown_command(name: str) -> None:
     """Custom handler for unknown commands."""
@@ -116,9 +125,10 @@ def main() -> None:
             "completion-menu.completion.current": "bg:ansibrightred ansibrightyellow",
         }
     )
-    shell = Shell()
     prompt = Prompt("> ", style=style)
-    shell.run(prompt, start_text="Welcome to the Lunar Engine showcase!")
+    shell.run(
+        prompt, start_text="Welcome to the Lunar Engine showcase!", use_alt_buffer=False
+    )
 
 
 if __name__ == "__main__":

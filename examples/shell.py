@@ -33,6 +33,17 @@ def switch() -> None:
     print("Switched registries!")
 
 
+@command()
+def set_prompt(text: str) -> None:
+    # You can also do it with prompt, and handlers!
+    # See handlers.py to see the usage for the latter
+    """Change the prompt test."""
+    shell.prompt.text = text
+
+    # We can also replace the prompt entirely by a new one:
+    # shell.prompt = Prompt(text, "Today is a good day")
+
+
 prompt = Prompt("$ ")
 
 shell = Shell()
