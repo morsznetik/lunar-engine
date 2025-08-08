@@ -1,3 +1,4 @@
+import shlex
 import traceback
 import inspect
 import sys
@@ -16,13 +17,18 @@ from typing import (
     get_type_hints,
 )
 from .command import CommandRegistry, get_registry
-from .exceptions import InterruptException, InvalidArgumentTypeException
+from .exceptions import (
+    InterruptException,
+    InvalidArgumentTypeException,
+    InvalidSyntaxException,
+)
 from .prompt import CommandCompleter, Prompt
 from .utils import pretty_format_error
 
 
 type UnexpectedExceptionHandler = Callable[[Exception], None]
 type CommandExceptionHandler = Callable[[Exception], None]
+type SyntaxExceptionHandler = Callable[[Exception], None]
 type UnknownCommandHandler = Callable[[str], None]
 type InterruptHandler = Callable[[], None]
 type CommandInterruptHandler = Callable[[], None]
@@ -44,6 +50,7 @@ class Event(Enum):
     INTERRUPT = auto()
     TYPE_TRANSFORM_ERROR = auto()
     ARGUMENT_COUNT_ERROR = auto()
+    SYNTAX_ERROR = auto()
     COMMAND_INTERRUPT = auto()
 
 
@@ -55,6 +62,10 @@ def _default_unexpected_exception(e: Exception) -> None:
 def _default_command_exception(e: Exception) -> None:
     print(pretty_format_error("Command error:", str(e)))
     traceback.print_exception(type(e), e, e.__traceback__, file=sys.stderr)
+
+
+def _default_syntax_error(e: Exception) -> None:
+    print(pretty_format_error("Syntax error:", str(e)))
 
 
 def _default_unknown_command(name: str) -> None:
@@ -118,6 +129,7 @@ class HandlerRegistry:
             Event.TYPE_TRANSFORM_ERROR: _default_type_transform_error,
             Event.ARGUMENT_COUNT_ERROR: _default_argument_error,
             Event.COMMAND_INTERRUPT: _default_command_interrupt,
+            Event.SYNTAX_ERROR: _default_syntax_error,
         }
 
     def __getitem__(self, event: Event) -> Handler:
@@ -242,6 +254,23 @@ class HandlerRegistry:
 
         def decorator(f: T) -> T:
             self._handlers[Event.ARGUMENT_COUNT_ERROR] = f
+            return f
+
+        if func is not None:
+            return decorator(func)
+        return decorator
+
+    def on_syntax_error[T: SyntaxExceptionHandler](
+        self, func: T | None = None
+    ) -> T | Callable[[T], T]:
+        """Decorator for syntax error event.
+
+        The decorated function will be called with the following arguments:
+            e: The exception that was caught.
+        """
+
+        def decorator(f: T) -> T:
+            self._handlers[Event.INTERRUPT] = f
             return f
 
         if func is not None:
@@ -681,7 +710,10 @@ class Shell:
                 else:
                     break
 
-            args = parts[args_start_index:]
+            try:
+                args = shlex.split(" ".join(parts[args_start_index:]))
+            except ValueError as e:
+                raise InvalidSyntaxException(e) from e
 
             func_signature = inspect.signature(cmd_info.func)
             type_hints = get_type_hints(cmd_info.func)
@@ -697,7 +729,7 @@ class Shell:
             param_names = list(param_types.keys())
             param_type_list = list(param_types.values())
 
-            # ignore Any since default can be of any type and that intended
+            # ignore Any since default can be of any type and that is intended
             required_params = [
                 p
                 for p in params
@@ -779,6 +811,8 @@ class Shell:
             pass
         except InterruptException:
             raise
+        except InvalidSyntaxException as e:
+            self._handlers[Event.SYNTAX_ERROR](e)
         except Exception as e:
             self._handlers[Event.UNEXPECTED_EXCEPTION](e)
 

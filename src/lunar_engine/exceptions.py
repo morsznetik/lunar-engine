@@ -47,3 +47,11 @@ class InvalidArgumentTypeException(CommandException):
     """
 
     pass
+
+
+class InvalidSyntaxException(LunarEngineException):
+    """
+    Raised when there is a syntax error from input. For example, an unclosed quotation mark.
+    """
+
+    pass
