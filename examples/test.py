@@ -10,7 +10,7 @@ from typing import Literal
 
 prompt = Prompt(
     "> ",
-    rprompt="Hi, test!",
+    rtext="Hi, test!",
     completer=FuzzyWordCompleter(
         ["hello", "world", "exit"],
         meta_dict={
@@ -135,7 +135,7 @@ def test_infer(
 # Create a CLI prompt with command completion
 prompt2 = Prompt(
     "> ",
-    rprompt="Welcome to Lunar CLI!",
+    rtext="Welcome to Lunar CLI!",
     completer=CommandCompleter(registry),
 )
 
