@@ -173,7 +173,9 @@ class HandlerRegistry:
         self, event: Literal[Event.UNKNOWN_COMMAND]
     ) -> UnknownCommandHandler: ...
     @overload
-    def __getitem__(self, event: Literal[Event.INTERRUPT]) -> InterruptHandler: ...
+    def __getitem__(
+        self, event: Literal[Event.INTERRUPT]
+    ) -> InterruptHandler: ...  # stay open
     @overload
     def __getitem__(
         self, event: Literal[Event.COMMAND_INTERRUPT]
@@ -195,7 +197,9 @@ class HandlerRegistry:
         self, event: Literal[Event.COMMAND_START]
     ) -> CommandStartHandler: ...
     @overload
-    def __getitem__(self, event: Literal[Event.COMMAND_END]) -> CommandEndHandler: ...
+    def __getitem__(
+        self, event: Literal[Event.COMMAND_END]
+    ) -> CommandEndHandler: ...  # stay open
     @overload
     def __getitem__(self, event: Event) -> Handler: ...
     def __getitem__(self, event: Event) -> Handler:
