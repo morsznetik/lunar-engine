@@ -28,7 +28,7 @@ from .utils import pretty_format_error
 
 type UnexpectedExceptionHandler = Callable[[Exception], None]
 type CommandExceptionHandler = Callable[[Exception], None]
-type SyntaxExceptionHandler = Callable[[Exception], None]
+type SyntaxExceptionHandler = Callable[[InvalidSyntaxException], None]
 type UnknownCommandHandler = Callable[[str], None]
 type InterruptHandler = Callable[[], None]
 type CommandInterruptHandler = Callable[[], None]
@@ -64,7 +64,7 @@ def _default_command_exception(e: Exception) -> None:
     traceback.print_exception(type(e), e, e.__traceback__, file=sys.stderr)
 
 
-def _default_syntax_error(e: Exception) -> None:
+def _default_syntax_error(e: InvalidSyntaxException) -> None:
     print(pretty_format_error("Syntax error:", str(e)))
 
 
