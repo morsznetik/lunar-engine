@@ -14,6 +14,7 @@ from prompt_toolkit.document import Document
 from prompt_toolkit.completion import CompleteEvent
 from .exceptions import InterruptException
 from .command import CommandRegistry, CommandInfo, get_registry
+from .text import StyledText
 import inspect
 
 
@@ -764,8 +765,8 @@ class Prompt:
     Supports context management and iteration. Evaluates as True while the prompt loop is active.
     """
 
-    _text: str
-    _rtext: str | None
+    _text: StyledText | str
+    _rtext: StyledText | str | None
     _completer: Completer
     _auto_suggest: AutoSuggest
     _history: History
@@ -777,9 +778,9 @@ class Prompt:
 
     def __init__(
         self,
-        prompt: str,
+        text: StyledText | str,
         /,
-        rprompt: str | None = None,
+        rtext: StyledText | str | None = None,
         *,
         completer: Completer | None = None,
         auto_suggest: AutoSuggest | None = None,
@@ -788,8 +789,8 @@ class Prompt:
         style: BaseStyle | None = None,
         session: PromptSession[str] | None = None,
     ) -> None:
-        self._text = prompt
-        self._rtext = rprompt
+        self._text = text
+        self._rtext = rtext
         self._completer = completer or CommandCompleter()
         self._history = history or InMemoryHistory()
         self._clipboard = clipboard or InMemoryClipboard()
@@ -818,20 +819,20 @@ class Prompt:
         return self._running
 
     @property
-    def text(self) -> str:
+    def text(self) -> StyledText | str:
         return self._text
 
     @text.setter
-    def text(self, value: str) -> None:
+    def text(self, value: StyledText | str) -> None:
         self._text = value
         self._session.message = value
 
     @property
-    def rtext(self) -> str | None:
+    def rtext(self) -> StyledText | str | None:
         return self._rtext
 
     @rtext.setter
-    def rtext(self, value: str | None) -> None:
+    def rtext(self, value: StyledText | str | None) -> None:
         self._rtext = value
         self._session.rprompt = value
 

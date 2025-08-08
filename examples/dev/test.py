@@ -5,9 +5,9 @@ from prompt_toolkit.styles import Style
 from lunar_engine.command import command
 from lunar_engine.shell import Event, Shell, handlers
 from lunar_engine.prompt import Prompt
+from lunar_engine.text import t
 from typing import Literal
 from enum import Enum
-from lunar_engine.utils import FgColors, TextEffects
 
 stop_event = threading.Event()
 
@@ -158,7 +158,7 @@ def update_time_rtext() -> None:
         if execution_time is not None and execution_time > 1.0:
             exec_time_str = f"{execution_time:.1f}s"
             shell.prompt.rtext = (
-                f" {FgColors.Red}{exec_time_str}{TextEffects.Reset}  {current_time}"
+                "test " + t(f" {exec_time_str} ", fg="ansired") + current_time
             )
         else:
             shell.prompt.rtext = current_time
