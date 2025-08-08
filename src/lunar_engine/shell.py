@@ -16,6 +16,7 @@ from typing import (
     get_args,
     get_origin,
     get_type_hints,
+    overload,
 )
 from prompt_toolkit.application import get_app_or_none
 from .command import CommandRegistry, get_registry
@@ -35,7 +36,7 @@ type UnknownCommandHandler = Callable[[str], None]
 type InterruptHandler = Callable[[], None]
 type CommandInterruptHandler = Callable[[], None]
 type TypeTransformErrorHandler = Callable[
-    [str, str, str | None, list[str], ValueError | None], None
+    [str, str, str | None, list[str] | None, Exception | None], None
 ]
 type ArgumentCountErrorHandler = Callable[[str, list[str] | None, int, int, int], None]
 type CommandSuccessHandler = Callable[[str], None]
@@ -105,7 +106,7 @@ def _default_type_transform_error(
     arg_name: str,
     arg_type: str | None = None,
     options: list[str] | None = None,
-    e: ValueError | None = None,
+    e: Exception | None = None,
 ) -> None:
     msg = f"For argument {arg_name!r}, could not interpret {arg!r}"
     if arg_type is not None:
@@ -155,6 +156,48 @@ class HandlerRegistry:
             Event.COMMAND_END: _default_command_end,
         }
 
+    @overload
+    def __getitem__(
+        self, event: Literal[Event.UNEXPECTED_EXCEPTION]
+    ) -> UnexpectedExceptionHandler: ...
+    @overload
+    def __getitem__(
+        self, event: Literal[Event.COMMAND_EXCEPTION]
+    ) -> CommandExceptionHandler: ...
+    @overload
+    def __getitem__(
+        self, event: Literal[Event.SYNTAX_ERROR]
+    ) -> SyntaxExceptionHandler: ...
+    @overload
+    def __getitem__(
+        self, event: Literal[Event.UNKNOWN_COMMAND]
+    ) -> UnknownCommandHandler: ...
+    @overload
+    def __getitem__(self, event: Literal[Event.INTERRUPT]) -> InterruptHandler: ...
+    @overload
+    def __getitem__(
+        self, event: Literal[Event.COMMAND_INTERRUPT]
+    ) -> CommandInterruptHandler: ...
+    @overload
+    def __getitem__(
+        self, event: Literal[Event.TYPE_TRANSFORM_ERROR]
+    ) -> TypeTransformErrorHandler: ...
+    @overload
+    def __getitem__(
+        self, event: Literal[Event.ARGUMENT_COUNT_ERROR]
+    ) -> ArgumentCountErrorHandler: ...
+    @overload
+    def __getitem__(
+        self, event: Literal[Event.COMMAND_SUCCESS]
+    ) -> CommandSuccessHandler: ...
+    @overload
+    def __getitem__(
+        self, event: Literal[Event.COMMAND_START]
+    ) -> CommandStartHandler: ...
+    @overload
+    def __getitem__(self, event: Literal[Event.COMMAND_END]) -> CommandEndHandler: ...
+    @overload
+    def __getitem__(self, event: Event) -> Handler: ...
     def __getitem__(self, event: Event) -> Handler:
         return self._handlers[event]
 
@@ -626,6 +669,8 @@ class Shell:
                         arg,
                         arg_names[i],
                         type_names,
+                        None,
+                        last_exception,
                     )
                     raise InvalidArgumentTypeException from last_exception
 
@@ -680,6 +725,7 @@ class Shell:
                     arg_name,
                     None,
                     literal_options_list,
+                    None,
                 )
             raise InvalidArgumentTypeException
 
@@ -692,7 +738,7 @@ class Shell:
                         arg,
                         arg_name,
                         arg_type.__name__,
-                        set(arg_type._member_map_.keys()),
+                        list(arg_type._member_map_.keys()),
                         e,
                     )
                 raise InvalidArgumentTypeException from e
@@ -876,7 +922,7 @@ class Shell:
             else:
                 if num_required > 0:
                     self._handlers[Event.ARGUMENT_COUNT_ERROR](
-                        0, num_required, len(params)
+                        cmd_info.name, [], 0, num_required, len(params)
                     )
                     return
                 transformed_args = []
