@@ -25,6 +25,14 @@ class InterruptException(PromptException):
     pass
 
 
+class InvalidSyntaxException(PromptException):
+    """
+    Raised when there is a syntax error from input. For example, an unclosed quotation mark.
+    """
+
+    pass
+
+
 class CommandException(LunarEngineException):
     """
     Base class for command-related errors.
@@ -44,14 +52,6 @@ class UntypedCommandException(CommandException):
 class InvalidArgumentTypeException(CommandException):
     """
     Raised when a command has an invalid argument type.
-    """
-
-    pass
-
-
-class InvalidSyntaxException(LunarEngineException):
-    """
-    Raised when there is a syntax error from input. For example, an unclosed quotation mark.
     """
 
     pass
