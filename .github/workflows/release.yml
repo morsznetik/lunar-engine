@@ -91,7 +91,7 @@ jobs:
           ## Recent Changes
           $COMMITS
 
-          **Full Changelog**: https://github.com/morsznetik/lunar-engine/compare/$LAST_TAG..$THIS_TAG
+          **Full Changelog**: https://github.com/morsznetik/lunar-engine/compare/$LAST_TAG...$THIS_TAG
           EOF
 
           if [ "$PRERELEASE" = "true" ]; then
