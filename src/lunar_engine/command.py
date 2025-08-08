@@ -3,7 +3,16 @@ import weakref
 from collections.abc import Iterator, Callable
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Final, get_type_hints, Self, get_origin, get_args, Literal
+from typing import (
+    Any,
+    Union,  # pyright: ignore[reportDeprecated]
+    Final,
+    get_type_hints,
+    Self,
+    get_origin,
+    get_args,
+    Literal,
+)
 from types import NoneType, UnionType
 from .exceptions import (
     UntypedCommandException,
@@ -13,41 +22,39 @@ from .exceptions import (
 type CommandFunc = Callable[..., None]
 
 
-# ignore reportAny because we cannot infer the type of the args
-def _is_allowed_type(type_hint: Any) -> bool:  # pyright: ignore[reportAny]
+def is_allowed_type(type_hint: Any) -> bool:  # pyright: ignore[reportAny]
     allowed_base_types = {int, float, str, bool, bytes, list, NoneType}
-    # early return for base types
+
+    if hasattr(type_hint, "__value__"):  # pyright: ignore[reportAny]
+        return type_hint.__value__  # pyright: ignore[reportAny]
+
     if type_hint in allowed_base_types:
         return True
 
     origin = get_origin(type_hint)  # pyright: ignore[reportAny]
 
-    # if no origin, it's not a generic type, so check if it's a base type or an Enum
+    # Base type or Enum
     if origin is None:
         return type_hint in allowed_base_types or (
             isinstance(type_hint, type) and issubclass(type_hint, Enum)
         )
 
-    # handle Literal types specifically
+    # Union or X | Y
+    # unions required here even though they're deprecated
+    if isinstance(type_hint, UnionType) or origin is Union:  # pyright: ignore[reportDeprecated]
+        return all(is_allowed_type(arg) for arg in get_args(type_hint))  # pyright: ignore[reportAny]
+
+    # Literal
     if origin is Literal:
-        # all Literal values should be of simple builtin types or Enum members
-        args = get_args(type_hint)
         return all(
-            type(arg) in allowed_base_types or isinstance(arg, Enum)  # pyright: ignore[reportAny]
-            for arg in args  # pyright: ignore[reportAny]
+            is_allowed_type(type(arg)) or isinstance(arg, Enum)  # pyright: ignore[reportAny]
+            for arg in get_args(type_hint)  # pyright: ignore[reportAny]
         )
 
-    # handle list types
+    # list[T]
     if origin is list:
         args = get_args(type_hint)
-        if not args:  # Plain list with no type args
-            return False
-        return all(_is_allowed_type(arg) for arg in args)  # pyright: ignore[reportAny]
-
-    if isinstance(type_hint, UnionType):
-        args = get_args(type_hint)
-        if args:
-            return all(_is_allowed_type(arg) for arg in args)  # pyright: ignore[reportAny]
+        return bool(args) and all(is_allowed_type(arg) for arg in args)  # pyright: ignore[reportAny]
 
     return False
 
@@ -89,19 +96,19 @@ class CommandInfo:
                         f"Command {self.name!r}: parameter {name!r} must have a type hint"
                     )
                 type_hint = hints[name]  # pyright: ignore[reportAny]
-                if not _is_allowed_type(type_hint):
+                if not is_allowed_type(type_hint):
                     raise InvalidArgumentTypeException(
                         f"Command {self.name!r}: parameter {name!r} has type {type_hint}, "
-                        + "but only simple builtin types are allowed: str, int, float, bool, bytes, list, None, or Enum"
+                        + "but only simple builtin types are allowed: str, int, float, bool, bytes, None, or Enum, and those in list[...]"
                     )
 
             # also check *args type
             elif param.kind == param.VAR_POSITIONAL:
                 type_hint = hints[name]  # pyright: ignore[reportAny]
-                if not _is_allowed_type(type_hint):
+                if not is_allowed_type(type_hint):
                     raise InvalidArgumentTypeException(
                         f"Command {self.name!r}: parameter {name!r} has type {type_hint}, "
-                        + "but only simple builtin types are allowed: str, int, float, bool, bytes, list, None, or Enum"
+                        + "but only simple builtin types are allowed: str, int, float, bool, bytes, list, None, or Enum, and those in list[...]"
                     )
 
 

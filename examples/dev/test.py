@@ -81,12 +81,21 @@ def countdown(start: int = 10) -> None:
     print("Blast off!")
 
 
+type priorities = Literal["low", "medium", "high"]
+
+
 @command()
 def process_data(
-    priority: Literal["low", "medium", "high"] = "medium", data: list[str] | None = None
+    priority: list[priorities] | None = None, data: list[str] | None = None
 ) -> None:
     """Processes a list of data with a given priority."""
+    priority = priority or ["medium"]
     print(f"Processing data: {data} with priority {priority}")
+
+
+@command()
+def single_item_list(data: list[Event | priorities]) -> None:
+    print(len(data))
 
 
 @command()
