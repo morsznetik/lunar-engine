@@ -1,3 +1,4 @@
+from prompt_toolkit.application.application import Application
 import shlex
 import traceback
 import inspect
@@ -16,6 +17,7 @@ from typing import (
     get_origin,
     get_type_hints,
 )
+from prompt_toolkit.application import get_app_or_none
 from .command import CommandRegistry, get_registry
 from .exceptions import (
     InterruptException,
@@ -36,6 +38,9 @@ type TypeTransformErrorHandler = Callable[
     [str, str, str | None, list[str], ValueError | None], None
 ]
 type ArgumentCountErrorHandler = Callable[[str, list[str] | None, int, int, int], None]
+type CommandSuccessHandler = Callable[[str], None]
+type CommandStartHandler = Callable[[str], None]
+type CommandEndHandler = Callable[[str], None]
 type Handler = Callable[..., None]
 
 type TransformedArgs = (
@@ -52,6 +57,9 @@ class Event(Enum):
     ARGUMENT_COUNT_ERROR = auto()
     SYNTAX_ERROR = auto()
     COMMAND_INTERRUPT = auto()
+    COMMAND_SUCCESS = auto()
+    COMMAND_START = auto()
+    COMMAND_END = auto()
 
 
 def _default_unexpected_exception(e: Exception) -> None:
@@ -78,6 +86,18 @@ def _default_interrupt() -> None:
 
 def _default_command_interrupt() -> None:
     print("\nCommand interrupted.")
+
+
+def _default_command_success(name: str) -> None:  # pyright: ignore[reportUnusedParameter]
+    pass
+
+
+def _default_command_start(name: str) -> None:  # pyright: ignore[reportUnusedParameter]
+    pass
+
+
+def _default_command_end(name: str) -> None:  # pyright: ignore[reportUnusedParameter]
+    pass
 
 
 def _default_type_transform_error(
@@ -130,6 +150,9 @@ class HandlerRegistry:
             Event.ARGUMENT_COUNT_ERROR: _default_argument_error,
             Event.COMMAND_INTERRUPT: _default_command_interrupt,
             Event.SYNTAX_ERROR: _default_syntax_error,
+            Event.COMMAND_SUCCESS: _default_command_success,
+            Event.COMMAND_START: _default_command_start,
+            Event.COMMAND_END: _default_command_end,
         }
 
     def __getitem__(self, event: Event) -> Handler:
@@ -270,7 +293,59 @@ class HandlerRegistry:
         """
 
         def decorator(f: T) -> T:
-            self._handlers[Event.INTERRUPT] = f
+            self._handlers[Event.SYNTAX_ERROR] = f
+            return f
+
+        if func is not None:
+            return decorator(func)
+        return decorator
+
+    def on_command_success[T: CommandSuccessHandler](
+        self, func: T | None = None
+    ) -> T | Callable[[T], T]:
+        """Decorator for command success event.
+
+        The decorated function will be called with the following arguments:
+            name: The name of the command that was successful.
+            result: The result of the command.
+        """
+
+        def decorator(f: T) -> T:
+            self._handlers[Event.COMMAND_SUCCESS] = f
+            return f
+
+        if func is not None:
+            return decorator(func)
+        return decorator
+
+    def on_command_start[T: CommandStartHandler](
+        self, func: T | None = None
+    ) -> T | Callable[[T], T]:
+        """Decorator for command start event.
+
+        The decorated function will be called with the following arguments:
+            name: The name of the command that is starting.
+        """
+
+        def decorator(f: T) -> T:
+            self._handlers[Event.COMMAND_START] = f
+            return f
+
+        if func is not None:
+            return decorator(func)
+        return decorator
+
+    def on_command_end[T: CommandEndHandler](
+        self, func: T | None = None
+    ) -> T | Callable[[T], T]:
+        """Decorator for command end event.
+
+        The decorated function will be called with the following arguments:
+            name: The name of the command that is ending.
+        """
+
+        def decorator(f: T) -> T:
+            self._handlers[Event.COMMAND_END] = f
             return f
 
         if func is not None:
@@ -400,6 +475,15 @@ class Shell:
     def _leave_alt_buffer(cls) -> None:
         sys.stdout.write("\033[?1049l")
         sys.stdout.flush()
+
+    def refresh(self) -> None:
+        """Refreshes the current prompt, redrawing it."""
+        app: Application[Any] | None = get_app_or_none()
+        if app is not None and self._prompt:
+            try:
+                app.invalidate()
+            except Exception:
+                pass
 
     def _register_builtin_commands(self) -> None:
         self._registry.register(self._exit_command, name="exit")
@@ -664,7 +748,7 @@ class Shell:
                         arg,
                         arg_name,
                         arg_type.__name__,
-                        {"true", "false"},
+                        ["true", "false"],
                         e,
                     )
                 raise InvalidArgumentTypeException from e
@@ -798,7 +882,9 @@ class Shell:
                 transformed_args = []
 
             try:
+                self._handlers[Event.COMMAND_START](cmd_info.name)
                 cmd_info.func(*transformed_args)
+                self._handlers[Event.COMMAND_SUCCESS](cmd_info.name)
             except InterruptException:
                 raise
             except KeyboardInterrupt:
@@ -807,6 +893,9 @@ class Shell:
             except Exception as e:
                 self._handlers[Event.COMMAND_EXCEPTION](e)
                 return
+            finally:
+                self._handlers[Event.COMMAND_END](cmd_info.name)
+
         except InvalidArgumentTypeException:
             pass
         except InterruptException:

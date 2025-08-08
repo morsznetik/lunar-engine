@@ -1,11 +1,15 @@
-"""Created to have a basepoint for development and testing."""
-
+import threading
+import time
+from datetime import datetime
 from prompt_toolkit.styles import Style
 from lunar_engine.command import command
 from lunar_engine.shell import Event, Shell, handlers
 from lunar_engine.prompt import Prompt
 from typing import Literal
 from enum import Enum
+from lunar_engine.utils import FgColors, TextEffects
+
+stop_event = threading.Event()
 
 
 class Language(Enum):
@@ -73,8 +77,6 @@ def subtract(a: int | float, b: int | float) -> None:
 @command()
 def countdown(start: int = 10) -> None:
     """Counts down from a number."""
-    import time
-
     for i in range(start, 0, -1):
         print(i)
         time.sleep(1)
@@ -124,7 +126,45 @@ def unknown_command(name: str) -> None:
 @handlers.on_interrupt
 def interrupt() -> None:
     """Custom handler for interrupts."""
+    stop_event.set()
     print("Goodbye!")
+
+
+start_time: float | None = None
+execution_time: float | None = None
+
+
+@handlers.on_command_start
+def on_command_start(_: str) -> None:
+    global start_time
+    start_time = time.time()
+
+
+@handlers.on_command_end
+def on_command_end(_: str) -> None:
+    global execution_time
+    if start_time is not None:
+        execution_time = time.time() - start_time
+    else:
+        execution_time = 0.0
+
+
+def update_time_rtext() -> None:
+    """Continuously update the right text with the current time."""
+    while not stop_event.is_set():
+        current_time = datetime.now().strftime("%H:%M:%S")
+
+        # Only show execution time if it's > 1 second
+        if execution_time is not None and execution_time > 1.0:
+            exec_time_str = f"{execution_time:.1f}s"
+            shell.prompt.rtext = (
+                f" {FgColors.Red}{exec_time_str}{TextEffects.Reset}  {current_time}"
+            )
+        else:
+            shell.prompt.rtext = current_time
+
+        shell.refresh()
+        stop_event.wait(1)
 
 
 def main() -> None:
@@ -135,6 +175,7 @@ def main() -> None:
         }
     )
     prompt = Prompt("> ", style=style)
+    threading.Thread(target=update_time_rtext).start()
     shell.run(
         prompt, start_text="Welcome to the Lunar Engine showcase!", use_alt_buffer=False
     )
