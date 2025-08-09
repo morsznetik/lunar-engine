@@ -75,11 +75,13 @@ def subtract(a: int | float, b: int | float) -> None:
 
 
 @command()
-def countdown(start: int = 10) -> None:
-    """Counts down from a number."""
-    for i in range(start, 0, -1):
-        print(i)
-        time.sleep(1)
+def countdown(start: float = 10, step: float = 1) -> None:
+    """Counts down from a number with a given step size."""
+    current = start
+    while current > 0:
+        print(round(current, 1))
+        time.sleep(step)
+        current -= step
     print("Blast off!")
 
 
@@ -143,6 +145,7 @@ def on_command_start(_: str) -> None:
 @handlers.on_command_end
 def on_command_end(_: str) -> None:
     global execution_time
+    shell.refresh()
     if start_time is not None:
         execution_time = time.time() - start_time
     else:
