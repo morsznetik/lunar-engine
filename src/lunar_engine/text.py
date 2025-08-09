@@ -1,52 +1,50 @@
-from typing import Literal, Self, override
+from typing import Self, override
 from enum import Enum
 from collections.abc import Iterator
 from prompt_toolkit.formatted_text import OneStyleAndTextTuple, StyleAndTextTuples
 
 
-type AnsiColor = Literal[
-    "ansidefault",
-    "ansiblack",
-    "ansired",
-    "ansigreen",
-    "ansiyellow",
-    "ansiblue",
-    "ansimagenta",
-    "ansicyan",
-    "ansigray",
-    "ansibrightblack",
-    "ansibrightred",
-    "ansibrightgreen",
-    "ansibrightyellow",
-    "ansibrightblue",
-    "ansibrightmagenta",
-    "ansibrightcyan",
-    "ansiwhite",
-]
+class AnsiColor(Enum):
+    DEFAULT = "ansidefault"
+    BLACK = "ansiblack"
+    RED = "ansired"
+    GREEN = "ansigreen"
+    YELLOW = "ansiyellow"
+    BLUE = "ansiblue"
+    MAGENTA = "ansimagenta"
+    CYAN = "ansicyan"
+    GRAY = "ansigray"
+    BRIGHT_BLACK = "ansibrightblack"
+    BRIGHT_RED = "ansibrightred"
+    BRIGHT_GREEN = "ansibrightgreen"
+    BRIGHT_YELLOW = "ansibrightyellow"
+    BRIGHT_BLUE = "ansibrightblue"
+    BRIGHT_MAGENTA = "ansibrightmagenta"
+    BRIGHT_CYAN = "ansibrightcyan"
+    WHITE = "ansiwhite"
 
-type TrueColor = Literal[
-    "black",
-    "red",
-    "green",
-    "yellow",
-    "blue",
-    "magenta",
-    "cyan",
-    "white",
-    "brightblack",
-    "brightred",
-    "brightgreen",
-    "brightyellow",
-    "brightblue",
-    "brightmagenta",
-    "brightcyan",
-    "brightwhite",
-]
 
-type Color = AnsiColor | TrueColor
+class TrueColor(Enum):
+    DEFAULT = "default"
+    BLACK = "black"
+    RED = "red"
+    GREEN = "green"
+    YELLOW = "yellow"
+    BLUE = "blue"
+    MAGENTA = "magenta"
+    CYAN = "cyan"
+    WHITE = "white"
+
+
+type Color = AnsiColor | TrueColor | str
 
 
 class StyledText:
+    """
+    Represents styled text segments for prompt_toolkit rendering.
+    Compatible with FormattedText with additional features like, built in concatenation
+    """
+
     parts: list[OneStyleAndTextTuple]
 
     def __init__(self, parts: list[OneStyleAndTextTuple]) -> None:
@@ -74,23 +72,64 @@ class StyledText:
 def text(
     text: str,
     *,
-    fg: Color | str | None = None,
-    bg: Color | str | None = None,
+    fg: Color | None = None,
+    bg: Color | None = None,
     bold: bool = False,
     italic: bool = False,
     underline: bool = False,
+    strike: bool = False,
+    blink: bool = False,
+    reverse: bool = False,
+    hidden: bool = False,
+    dim: bool = False,
 ) -> StyledText:
+    """
+    Create a StyledText object with specified colors and text effects.
+
+    Args:
+        text: The content to style.
+        fg: Foreground color (AnsiColor, TrueColor, or string).
+        bg: Background color (AnsiColor, TrueColor, or string).
+        bold: Whether to apply bold styling.
+        italic: Whether to apply italic styling.
+        underline: Whether to underline the text.
+        strike: Whether to apply strikethrough.
+        blink: Whether to apply blinking effect.
+        reverse: Whether to reverse foreground and background colors.
+        hidden: Whether to hide the text.
+        ~dim: Whether to dim the text.
+
+    Returns:
+        A StyledText object containing the styled text - compatible with
+         prompt_toolkit's FormattedText
+    """
+
+    def normalize_color(c: Color) -> str:
+        return c.value if isinstance(c, Enum) else c
+
     style_parts: list[str] = []
     if fg:
-        style_parts.append(f"fg:{fg}")
+        style_parts.append(f"fg:{normalize_color(fg)}")
     if bg:
-        style_parts.append(f"bg:{bg}")
+        style_parts.append(f"bg:{normalize_color(bg)}")
     if bold:
         style_parts.append("bold")
     if italic:
         style_parts.append("italic")
     if underline:
         style_parts.append("underline")
+    if strike:
+        style_parts.append("strike")
+    if blink:
+        style_parts.append("blink")
+    if reverse:
+        style_parts.append("reverse")
+    if hidden:
+        style_parts.append("hidden")
+    if dim:
+        # style_parts.append("dim")
+        raise NotImplementedError("Available in a future version of prompt_toolkit")
+
     style = " ".join(style_parts)
     return StyledText([(style, text)])
 

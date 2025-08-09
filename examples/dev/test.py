@@ -1,11 +1,12 @@
 import threading
 import time
 from datetime import datetime
+from prompt_toolkit import print_formatted_text
 from prompt_toolkit.styles import Style
 from lunar_engine.command import command
 from lunar_engine.shell import Event, Shell, handlers
 from lunar_engine.prompt import Prompt
-from lunar_engine.text import t
+from lunar_engine.text import AnsiColor, TrueColor, t
 from typing import Literal
 from enum import Enum
 
@@ -119,6 +120,42 @@ def set_prompt(prompt: str) -> None:
     shell.prompt.text = prompt
 
 
+@command()
+def print_colors() -> None:
+    print_formatted_text(t("ANSI Colors:", bold=True, underline=True))
+    for color in AnsiColor:
+        print_formatted_text(
+            t(f"{color.name:20}", fg=color) + t(" Sample Text", fg=color)
+        )
+    print()
+
+    print_formatted_text(t("TrueColor Colors:", bold=True, underline=True))
+    for color in TrueColor:
+        print_formatted_text(
+            t(f"{color.name:20}", fg=color) + t(" Sample Text", fg=color)
+        )
+    print()
+
+    print_formatted_text(t("Text Effects:", bold=True, underline=True))
+    effects = [
+        ("Bold", dict(bold=True)),
+        ("Italic", dict(italic=True)),
+        ("Underline", dict(underline=True)),
+        ("Strike", dict(strike=True)),
+        ("Blink", dict(blink=True)),
+        ("Reverse", dict(reverse=True)),
+        ("Hidden", dict(hidden=True)),
+        ("Dim", dict(dim=True)),
+    ]
+    for name, kwargs in effects:
+        try:
+            print_formatted_text(
+                t(f"{name:20}", **kwargs) + t(" Sample Text", **kwargs)  # pyright: ignore[reportArgumentType]
+            )
+        except NotImplementedError as e:
+            print_formatted_text(t(f"{name:20}") + t(str(e)))
+
+
 @handlers.on_unknown_command
 def unknown_command(name: str) -> None:
     """Custom handler for unknown commands."""
@@ -161,7 +198,7 @@ def update_time_rtext() -> None:
         if execution_time is not None and execution_time > 1.0:
             exec_time_str = f"{execution_time:.1f}s"
             shell.prompt.rtext = (
-                "test " + t(f" {exec_time_str} ", fg="ansired") + current_time
+                "test " + t(f" {exec_time_str} ", fg=AnsiColor.RED) + current_time
             )
         else:
             shell.prompt.rtext = current_time
